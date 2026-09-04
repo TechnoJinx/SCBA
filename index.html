@@ -351,9 +351,40 @@ let currentId = null;
 let currentType = 'Extinguisher';
 
 // ---------- Storage ----------
-function loadItems() {
-  try { const raw = localStorage.getItem(STORAGE_KEY); items = raw ? JSON.parse(raw) : {}; }
-  catch (e) { items = {}; }
+function expandSeedData(compact) {
+  const now = Date.now();
+  const out = {};
+  (compact.ext || []).forEach(([id, unit, extLocation, extWeightAgent, extInspection, extLastInspected, extComments]) => {
+    out[id] = { type: 'Extinguisher', unit, extLocation, extWeightAgent, extInspection, extLastInspected, extComments,
+      history: [{ location: extLocation, result: extInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.light || []).forEach(([id, unit, lightLocation, lightInspection, lightLastInspected, lightComments]) => {
+    out[id] = { type: 'Emergency Light', unit, lightLocation, lightInspection, lightLastInspected, lightComments,
+      history: [{ location: lightLocation, result: lightInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.scba || []).forEach(([id, unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
+      scbaCylinderId, scbaLastHydro, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments]) => {
+    out[id] = { type: 'SCBA Station', unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
+      scbaCylinderId, scbaLastHydro, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments,
+      history: [{ location: scbaCabinetLocation, result: scbaInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  return out;
+}
+
+async function loadItems() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw !== null) {
+    try { items = JSON.parse(raw); } catch (e) { items = {}; }
+    return;
+  }
+  // First-ever load on this device — seed from the July 2026 inspection sheet.
+  try {
+    const res = await fetch('seed-data.json');
+    items = expandSeedData(await res.json());
+  } catch (e) {
+    items = {};
+  }
+  saveItems();
 }
 function saveItems() { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
 function loadUnits() {
@@ -914,10 +945,12 @@ async function writeNfcIdToTag(targetInputId) {
 if (!window.isSecureContext) {
   showBanner('This page must be served over HTTPS (or localhost) for NFC/camera to work.');
 }
-loadItems();
-loadUnits();
-populateFilters();
-renderList();
+(async function init() {
+  loadUnits();
+  await loadItems();
+  populateFilters();
+  renderList();
+})();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
