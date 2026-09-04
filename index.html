@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Safety Equipment Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --card-border: #334155;
+    --accent: #38bdf8; --text: #e2e8f0; --text-dim: #94a3b8;
+    --danger: #f87171; --success: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 100px;
+  }
+  header { padding: 20px 16px 12px; text-align: center; }
+  header h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: 0.3px; }
+  header p { margin: 2px 0 0; color: var(--text-dim); font-size: 12px; }
+  .status-banner {
+    margin: 12px 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    background: #422006; color: #fbbf24; border: 1px solid #78350f; display: none;
+  }
+  .status-banner.show { display: block; }
+  .scan-area {
+    margin: 16px; padding: 28px 16px; border-radius: 16px;
+    background: var(--card); border: 1px solid var(--card-border); text-align: center;
+  }
+  #scanBtn {
+    background: var(--accent); color: #052e3d; border: none; border-radius: 999px;
+    padding: 16px 40px; font-size: 16px; font-weight: 600; cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  #scanBtn:active { transform: scale(0.97); }
+  #scanBtn.scanning { background: var(--danger); color: #3f0d0d; animation: pulse 1.4s infinite; }
+  #scanBtn:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .scan-hint { margin-top: 12px; font-size: 13px; color: var(--text-dim); }
+  .toolbar { display: flex; gap: 8px; padding: 0 16px; margin-bottom: 8px; flex-wrap: wrap; }
+  .toolbar input[type="text"], .toolbar select {
+    flex: 1; min-width: 120px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--card-border);
+    background: var(--card); color: var(--text); font-size: 14px;
+  }
+  .section-label {
+    padding: 0 16px; color: var(--text-dim); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.8px; margin: 18px 0 8px;
+  }
+  .item-list { padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+  .item-card {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 12px;
+    padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .item-info { flex: 1; min-width: 0; }
+  .item-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .badges { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .badge-type { background: var(--accent); color: #052e3d; }
+  .badge-unit { background: #334155; color: var(--text); }
+  .badge-pass { background: var(--success); color: #062012; }
+  .badge-fail { background: var(--danger); color: #3f0d0d; }
+  .item-scanned { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .item-actions { display: flex; gap: 6px; }
+  .item-actions button {
+    background: #0f172a; border: 1px solid var(--card-border); color: var(--text-dim);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+  }
+  .empty-state { text-align: center; color: var(--text-dim); padding: 40px 20px; font-size: 14px; }
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
+    border-top: 1px solid var(--card-border); padding: 10px 16px; display: flex; gap: 8px; justify-content: center;
+  }
+  .bottom-bar button {
+    flex: 1; max-width: 200px; padding: 12px; border-radius: 10px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #exportBtn { background: #334155; color: var(--text); }
+  #clearBtn { background: #7f1d1d; color: #fecaca; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+    align-items: flex-end; justify-content: center; z-index: 100;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card); width: 100%; max-width: 480px; border-radius: 16px 16px 0 0;
+    padding: 20px; max-height: 92vh; overflow-y: auto; animation: slideUp 0.2s ease-out;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal h2 { margin: 0 0 4px; font-size: 17px; }
+  .modal .tag-id { font-family: monospace; color: var(--text-dim); font-size: 12px; margin-bottom: 16px; word-break: break-all; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; margin-top: 12px; }
+  .modal input, .modal textarea, .modal select {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; color: var(--text); font-size: 14px;
+  }
+  .type-toggle { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .type-toggle button {
+    flex: 1; min-width: 90px; padding: 10px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; color: var(--text-dim); font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .type-toggle button.active { background: var(--accent); color: #052e3d; border-color: var(--accent); }
+  .field-row { display: flex; gap: 8px; }
+  .field-row > div { flex: 1; }
+  .type-fields { display: none; }
+  .type-fields.active { display: block; }
+  .modal-buttons { display: flex; gap: 8px; margin-top: 18px; }
+  .modal-buttons button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #saveItemBtn { background: var(--accent); color: #052e3d; }
+  #cancelModalBtn { background: #334155; color: var(--text); }
+  #deleteItemBtn { background: #7f1d1d; color: #fecaca; flex: 0 0 auto; padding: 12px 16px; }
+
+  .history-section { margin-top: 16px; border-top: 1px solid var(--card-border); padding-top: 12px; }
+  .history-toggle { background: none; border: none; color: var(--accent); font-size: 13px; padding: 0; cursor: pointer; }
+  .history-list { margin-top: 10px; max-height: 160px; overflow-y: auto; display: none; }
+  .history-list.show { display: block; }
+  .history-row {
+    display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0;
+    border-bottom: 1px solid #263244; color: var(--text-dim);
+  }
+  .history-row .hist-loc { color: var(--text); }
+
+  .toast {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--card);
+    border: 1px solid var(--card-border); padding: 10px 18px; border-radius: 999px; font-size: 13px;
+    z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🦺 Safety Equipment Tracker</h1>
+  <p id="itemCount">0 items tracked</p>
+</header>
+
+<div class="status-banner" id="statusBanner"></div>
+
+<div class="scan-area">
+  <button id="scanBtn">Scan Tag</button>
+  <div class="scan-hint" id="scanHint">Tap to start, then hold a tag to the back of your phone</div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="searchInput" placeholder="Search...">
+  <select id="typeFilter"><option value="">All types</option></select>
+  <select id="unitFilter"><option value="">All units</option></select>
+</div>
+
+<div class="section-label">Inventory</div>
+<div class="item-list" id="itemList"></div>
+
+<div class="bottom-bar">
+  <button id="exportBtn">Export CSV</button>
+  <button id="clearBtn">Clear All</button>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">New Item</h2>
+    <div class="tag-id" id="modalTagId"></div>
+
+    <label>Equipment Type</label>
+    <div class="type-toggle" id="typeToggle">
+      <button type="button" data-type="Extinguisher">Extinguisher</button>
+      <button type="button" data-type="Emergency Light">Emerg. Light</button>
+      <button type="button" data-type="SCBA Station">SCBA Station</button>
+    </div>
+
+    <label>Unit</label>
+    <select id="unitInput"></select>
+
+    <!-- Extinguisher fields -->
+    <div class="type-fields" id="fields-Extinguisher">
+      <label>Location</label>
+      <input type="text" id="extLocationInput" placeholder="e.g. Reformer Shelter NE Door">
+      <div class="field-row">
+        <div>
+          <label>Weight & Agent</label>
+          <input type="text" id="extWeightAgentInput" placeholder="e.g. 9.5 lbs CleanGuard">
+        </div>
+        <div>
+          <label>Barcode</label>
+          <input type="text" id="extBarcodeInput" placeholder="e.g. A04435">
+        </div>
+      </div>
+      <label>General Inspection</label>
+      <select id="extInspectionInput">
+        <option value="">— Not set —</option>
+        <option value="Pass">Pass</option>
+        <option value="Fail">Fail</option>
+        <option value="N/A">N/A</option>
+      </select>
+      <div class="field-row">
+        <div>
+          <label>Last Inspected</label>
+          <input type="date" id="extLastInspectedInput">
+        </div>
+      </div>
+      <label>Comments</label>
+      <textarea id="extCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Emergency Light fields -->
+    <div class="type-fields" id="fields-Emergency Light">
+      <label>Light Barcode & Location</label>
+      <input type="text" id="lightLocationInput" placeholder="e.g. A04436 RE Shelter NE Dr">
+      <label>General Inspection</label>
+      <select id="lightInspectionInput">
+        <option value="">— Not set —</option>
+        <option value="Pass">Pass</option>
+        <option value="Fail">Fail</option>
+        <option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="lightLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="lightCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Station fields -->
+    <div class="type-fields" id="fields-SCBA Station">
+      <label>Cabinet Barcode & Location</label>
+      <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. A03773 Reformer Shelter Inside #1">
+      <label>Cabinet Condition</label>
+      <select id="scbaCabinetConditionInput">
+        <option value="">— Not set —</option>
+        <option value="Pass">Pass</option>
+        <option value="Fail">Fail</option>
+        <option value="N/A">N/A</option>
+      </select>
+      <div class="field-row">
+        <div>
+          <label>Frame Barcode</label>
+          <input type="text" id="scbaFrameBarcodeInput" placeholder="e.g. BPP092">
+        </div>
+        <div>
+          <label>Last Calibration</label>
+          <input type="date" id="scbaLastCalibrationInput">
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label>Cylinder Barcode</label>
+          <input type="text" id="scbaCylinderBarcodeInput" placeholder="e.g. FTC046">
+        </div>
+        <div>
+          <label>Last Hydro</label>
+          <input type="date" id="scbaLastHydroInput">
+        </div>
+      </div>
+      <label>SCBA General Inspection</label>
+      <select id="scbaInspectionInput">
+        <option value="">— Not set —</option>
+        <option value="Pass">Pass</option>
+        <option value="Fail">Fail</option>
+        <option value="N/A">N/A</option>
+      </select>
+      <div class="field-row">
+        <div>
+          <label>L Mask Barcode</label>
+          <input type="text" id="scbaLMaskInput">
+        </div>
+        <div>
+          <label>M Mask Barcode</label>
+          <input type="text" id="scbaMMaskInput">
+        </div>
+        <div>
+          <label>S Mask Barcode</label>
+          <input type="text" id="scbaSMaskInput">
+        </div>
+      </div>
+      <label>Last Inspected</label>
+      <input type="date" id="scbaLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="scbaCommentsInput" rows="2"></textarea>
+    </div>
+
+    <div class="history-section" id="historySection" style="display:none;">
+      <button type="button" class="history-toggle" id="historyToggle">Show scan history ▾</button>
+      <div class="history-list" id="historyList"></div>
+    </div>
+
+    <div class="modal-buttons">
+      <button id="deleteItemBtn" style="display:none;">Delete</button>
+      <button id="cancelModalBtn">Cancel</button>
+      <button id="saveItemBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'safety_tracker_items_v3';
+const UNITS_KEY = 'safety_tracker_units_v1';
+const ADD_NEW_VALUE = '__add_new__';
+const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment'];
+const TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station'];
+
+let items = {};
+let units = [];
+let currentTagId = null;
+let currentType = 'Extinguisher';
+let scanning = false;
+let ndef = null;
+
+// ---------- Storage ----------
+function loadItems() {
+  try { const raw = localStorage.getItem(STORAGE_KEY); items = raw ? JSON.parse(raw) : {}; }
+  catch (e) { items = {}; }
+}
+function saveItems() { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+function loadUnits() {
+  try { const raw = localStorage.getItem(UNITS_KEY); units = raw ? JSON.parse(raw) : DEFAULT_UNITS.slice(); }
+  catch (e) { units = DEFAULT_UNITS.slice(); }
+}
+function saveUnits() { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
+function ensureUnit(name) { if (name && !units.includes(name)) { units.push(name); saveUnits(); } }
+
+// ---------- UI helpers ----------
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+function showBanner(msg) {
+  const b = document.getElementById('statusBanner');
+  b.textContent = msg; b.classList.add('show');
+}
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+function escapeAttr(str) { return String(str).replace(/"/g, '&quot;'); }
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  return new Date(ts).toLocaleDateString();
+}
+function itemLocationLabel(item) {
+  if (item.type === 'Extinguisher') return item.extLocation || '';
+  if (item.type === 'Emergency Light') return item.lightLocation || '';
+  if (item.type === 'SCBA Station') return item.scbaCabinetLocation || '';
+  return '';
+}
+function itemInspectionResult(item) {
+  if (item.type === 'Extinguisher') return item.extInspection || '';
+  if (item.type === 'Emergency Light') return item.lightInspection || '';
+  if (item.type === 'SCBA Station') return item.scbaInspection || '';
+  return '';
+}
+function itemDisplayName(item) {
+  return itemLocationLabel(item) || item.type || 'Unnamed item';
+}
+function itemSummaryLine(item) {
+  if (item.type === 'Extinguisher') {
+    const parts = [];
+    if (item.extBarcode) parts.push(item.extBarcode);
+    if (item.extWeightAgent) parts.push(item.extWeightAgent);
+    if (item.extLastInspected) parts.push('Inspected ' + item.extLastInspected);
+    return parts.join(' · ');
+  }
+  if (item.type === 'Emergency Light') {
+    const parts = [];
+    if (item.lightLastInspected) parts.push('Inspected ' + item.lightLastInspected);
+    return parts.join(' · ');
+  }
+  if (item.type === 'SCBA Station') {
+    const parts = [];
+    if (item.scbaFrameBarcode) parts.push('Frame ' + item.scbaFrameBarcode);
+    if (item.scbaCylinderBarcode) parts.push('Cyl ' + item.scbaCylinderBarcode);
+    if (item.scbaLastHydro) parts.push('Hydro ' + item.scbaLastHydro);
+    return parts.join(' · ');
+  }
+  return '';
+}
+
+function populateFilters() {
+  const typeSel = document.getElementById('typeFilter');
+  const curType = typeSel.value;
+  typeSel.innerHTML = '<option value="">All types</option>' +
+    TYPES.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
+  typeSel.value = TYPES.includes(curType) ? curType : '';
+
+  const unitSel = document.getElementById('unitFilter');
+  const curUnit = unitSel.value;
+  unitSel.innerHTML = '<option value="">All units</option>' +
+    units.map(u => `<option value="${escapeAttr(u)}">${escapeHtml(u)}</option>`).join('');
+  unitSel.value = units.includes(curUnit) ? curUnit : '';
+}
+
+function renderList() {
+  const listEl = document.getElementById('itemList');
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const typeFilterVal = document.getElementById('typeFilter').value;
+  const unitFilterVal = document.getElementById('unitFilter').value;
+  const entries = Object.entries(items).filter(([id, item]) => {
+    if (typeFilterVal && item.type !== typeFilterVal) return false;
+    if (unitFilterVal && item.unit !== unitFilterVal) return false;
+    if (!query) return true;
+    const hay = [itemDisplayName(item), item.type, item.unit, id].join(' ').toLowerCase();
+    return hay.includes(query);
+  }).sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+
+  document.getElementById('itemCount').textContent =
+    Object.keys(items).length + ' item' + (Object.keys(items).length === 1 ? '' : 's') + ' tracked';
+
+  if (entries.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">No items yet — scan a tag to add one.</div>';
+    return;
+  }
+
+  listEl.innerHTML = entries.map(([id, item]) => {
+    const result = itemInspectionResult(item);
+    const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
+      : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
+    return `
+    <div class="item-card" data-id="${escapeAttr(id)}">
+      <div class="item-info">
+        <div class="item-name">${escapeHtml(itemDisplayName(item))}</div>
+        <div class="item-meta">${escapeHtml(itemSummaryLine(item))}</div>
+        <div class="badges">
+          ${item.type ? `<span class="badge badge-type">${escapeHtml(item.type)}</span>` : ''}
+          ${item.unit ? `<span class="badge badge-unit">${escapeHtml(item.unit)}</span>` : ''}
+          ${resultBadge}
+        </div>
+        <div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>
+      </div>
+      <div class="item-actions">
+        <button class="editBtn" data-id="${escapeAttr(id)}">Edit</button>
+      </div>
+    </div>
+  `; }).join('');
+
+  listEl.querySelectorAll('.editBtn').forEach(btn => {
+    btn.addEventListener('click', () => openModal(btn.dataset.id));
+  });
+}
+
+// ---------- Type toggle ----------
+function setType(type) {
+  currentType = type;
+  document.querySelectorAll('#typeToggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+  TYPES.forEach(t => {
+    document.getElementById('fields-' + t).classList.toggle('active', t === type);
+  });
+}
+document.getElementById('typeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-type]');
+  if (btn) setType(btn.dataset.type);
+});
+
+// ---------- Unit select ----------
+function populateUnitSelect(selected) {
+  const sel = document.getElementById('unitInput');
+  sel.innerHTML = '';
+  units.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u; opt.textContent = u;
+    sel.appendChild(opt);
+  });
+  const addOpt = document.createElement('option');
+  addOpt.value = ADD_NEW_VALUE;
+  addOpt.textContent = '+ Add new unit...';
+  sel.appendChild(addOpt);
+  sel.value = selected && units.includes(selected) ? selected : (units[0] || '');
+}
+document.getElementById('unitInput').addEventListener('change', (e) => {
+  if (e.target.value === ADD_NEW_VALUE) {
+    const name = prompt('New unit name:');
+    const trimmed = (name || '').trim();
+    if (trimmed) {
+      ensureUnit(trimmed);
+      populateUnitSelect(trimmed);
+      populateFilters();
+    } else {
+      populateUnitSelect(units[0]);
+    }
+  }
+});
+
+// ---------- History ----------
+function renderHistory(item) {
+  const section = document.getElementById('historySection');
+  const list = document.getElementById('historyList');
+  const history = (item && item.history) || [];
+  if (!history.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.classList.remove('show');
+  document.getElementById('historyToggle').textContent = 'Show scan history ▾';
+  list.innerHTML = history.slice().reverse().map(h => `
+    <div class="history-row">
+      <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+      <span>${new Date(h.timestamp).toLocaleString()}</span>
+    </div>
+  `).join('');
+}
+document.getElementById('historyToggle').addEventListener('click', () => {
+  const list = document.getElementById('historyList');
+  const toggle = document.getElementById('historyToggle');
+  list.classList.toggle('show');
+  toggle.textContent = list.classList.contains('show') ? 'Hide scan history ▴' : 'Show scan history ▾';
+});
+
+// ---------- Modal ----------
+function openModal(tagId) {
+  currentTagId = tagId;
+  const existing = items[tagId];
+  document.getElementById('modalTitle').textContent = existing ? 'Edit Item' : 'New Item';
+  document.getElementById('modalTagId').textContent = 'Tag ID: ' + tagId;
+
+  setType(existing?.type || 'Extinguisher');
+  populateUnitSelect(existing?.unit);
+
+  document.getElementById('extLocationInput').value = existing?.extLocation || '';
+  document.getElementById('extWeightAgentInput').value = existing?.extWeightAgent || '';
+  document.getElementById('extBarcodeInput').value = existing?.extBarcode || '';
+  document.getElementById('extInspectionInput').value = existing?.extInspection || '';
+  document.getElementById('extLastInspectedInput').value = existing?.extLastInspected || '';
+  document.getElementById('extCommentsInput').value = existing?.extComments || '';
+
+  document.getElementById('lightLocationInput').value = existing?.lightLocation || '';
+  document.getElementById('lightInspectionInput').value = existing?.lightInspection || '';
+  document.getElementById('lightLastInspectedInput').value = existing?.lightLastInspected || '';
+  document.getElementById('lightCommentsInput').value = existing?.lightComments || '';
+
+  document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
+  document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
+  document.getElementById('scbaFrameBarcodeInput').value = existing?.scbaFrameBarcode || '';
+  document.getElementById('scbaLastCalibrationInput').value = existing?.scbaLastCalibration || '';
+  document.getElementById('scbaCylinderBarcodeInput').value = existing?.scbaCylinderBarcode || '';
+  document.getElementById('scbaLastHydroInput').value = existing?.scbaLastHydro || '';
+  document.getElementById('scbaInspectionInput').value = existing?.scbaInspection || '';
+  document.getElementById('scbaLMaskInput').value = existing?.scbaLMask || '';
+  document.getElementById('scbaMMaskInput').value = existing?.scbaMMask || '';
+  document.getElementById('scbaSMaskInput').value = existing?.scbaSMask || '';
+  document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
+  document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
+
+  renderHistory(existing);
+  document.getElementById('deleteItemBtn').style.display = existing ? 'block' : 'none';
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  currentTagId = null;
+}
+document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modalOverlay') closeModal();
+});
+
+document.getElementById('saveItemBtn').addEventListener('click', () => {
+  if (!currentTagId) return;
+  const unit = document.getElementById('unitInput').value;
+  if (unit && unit !== ADD_NEW_VALUE) ensureUnit(unit);
+
+  const draft = {
+    type: currentType,
+    unit,
+    extLocation: document.getElementById('extLocationInput').value.trim(),
+    extWeightAgent: document.getElementById('extWeightAgentInput').value.trim(),
+    extBarcode: document.getElementById('extBarcodeInput').value.trim(),
+    extInspection: document.getElementById('extInspectionInput').value,
+    extLastInspected: document.getElementById('extLastInspectedInput').value,
+    extComments: document.getElementById('extCommentsInput').value.trim(),
+
+    lightLocation: document.getElementById('lightLocationInput').value.trim(),
+    lightInspection: document.getElementById('lightInspectionInput').value,
+    lightLastInspected: document.getElementById('lightLastInspectedInput').value,
+    lightComments: document.getElementById('lightCommentsInput').value.trim(),
+
+    scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
+    scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
+    scbaFrameBarcode: document.getElementById('scbaFrameBarcodeInput').value.trim(),
+    scbaLastCalibration: document.getElementById('scbaLastCalibrationInput').value,
+    scbaCylinderBarcode: document.getElementById('scbaCylinderBarcodeInput').value.trim(),
+    scbaLastHydro: document.getElementById('scbaLastHydroInput').value,
+    scbaInspection: document.getElementById('scbaInspectionInput').value,
+    scbaLMask: document.getElementById('scbaLMaskInput').value.trim(),
+    scbaMMask: document.getElementById('scbaMMaskInput').value.trim(),
+    scbaSMask: document.getElementById('scbaSMaskInput').value.trim(),
+    scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
+    scbaComments: document.getElementById('scbaCommentsInput').value.trim()
+  };
+
+  if (!itemLocationLabel(draft)) { showToast('Give it a location/barcode label first'); return; }
+
+  const now = Date.now();
+  const existing = items[currentTagId];
+  const history = existing?.history ? existing.history.slice() : [];
+  history.push({ location: itemLocationLabel(draft), result: itemInspectionResult(draft), timestamp: now });
+
+  items[currentTagId] = {
+    ...draft,
+    history,
+    updatedAt: now,
+    createdAt: existing?.createdAt || now
+  };
+  saveItems();
+  populateFilters();
+  renderList();
+  closeModal();
+  showToast('Saved');
+});
+
+document.getElementById('deleteItemBtn').addEventListener('click', () => {
+  if (!currentTagId) return;
+  delete items[currentTagId];
+  saveItems();
+  renderList();
+  closeModal();
+  showToast('Deleted');
+});
+
+document.getElementById('searchInput').addEventListener('input', renderList);
+document.getElementById('typeFilter').addEventListener('change', renderList);
+document.getElementById('unitFilter').addEventListener('change', renderList);
+
+// ---------- Export (flat CSV, no external dependencies) ----------
+function csvEscape(v) {
+  if (v === null || v === undefined) v = '';
+  v = String(v);
+  return '"' + v.replace(/"/g, '""') + '"';
+}
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const header = [
+    'Tag ID', 'Type', 'Unit',
+    'Ext Location', 'Ext Weight & Agent', 'Ext Barcode', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
+    'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
+    'SCBA Cabinet Location', 'SCBA Cabinet Condition', 'SCBA Frame Barcode', 'SCBA Last Calibration',
+    'SCBA Cylinder Barcode', 'SCBA Last Hydro', 'SCBA Inspection', 'SCBA L Mask', 'SCBA M Mask', 'SCBA S Mask',
+    'SCBA Last Inspected', 'SCBA Comments',
+    'Scan Count', 'Created', 'Last Scanned'
+  ];
+  const rows = [header];
+  Object.entries(items).forEach(([id, i]) => {
+    rows.push([
+      id, i.type || '', i.unit || '',
+      i.extLocation || '', i.extWeightAgent || '', i.extBarcode || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
+      i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
+      i.scbaCabinetLocation || '', i.scbaCabinetCondition || '', i.scbaFrameBarcode || '', i.scbaLastCalibration || '',
+      i.scbaCylinderBarcode || '', i.scbaLastHydro || '', i.scbaInspection || '', i.scbaLMask || '', i.scbaMMask || '', i.scbaSMask || '',
+      i.scbaLastInspected || '', i.scbaComments || '',
+      (i.history || []).length,
+      i.createdAt ? new Date(i.createdAt).toISOString() : '',
+      i.updatedAt ? new Date(i.updatedAt).toISOString() : ''
+    ]);
+  });
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'safety_equipment_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV downloaded');
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (confirm('Delete ALL tracked equipment? This cannot be undone.')) {
+    items = {};
+    saveItems();
+    renderList();
+    showToast('Cleared');
+  }
+});
+
+// ---------- NFC ----------
+const scanBtn = document.getElementById('scanBtn');
+const scanHint = document.getElementById('scanHint');
+
+async function startScanning() {
+  showToast('Requesting NFC access…');
+  scanBtn.textContent = 'Starting…';
+  scanBtn.disabled = true;
+
+  if (!('NDEFReader' in window)) {
+    showBanner('Web NFC isn\'t available in this browser. Open this page in Chrome for Android over HTTPS.');
+    scanBtn.textContent = 'Scan Tag';
+    scanBtn.disabled = true;
+    return;
+  }
+
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    showBanner('NFC permission request timed out after 10s. Check NFC is ON in phone settings.');
+    stopScanning();
+    scanBtn.disabled = false;
+  }, 10000);
+
+  try {
+    ndef = new NDEFReader();
+    await ndef.scan();
+    clearTimeout(timeoutId);
+    if (timedOut) return;
+    scanning = true;
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Scanning… (tap to stop)';
+    scanBtn.classList.add('scanning');
+    scanHint.textContent = 'Hold a tag to the back of your phone';
+
+    ndef.addEventListener('reading', (event) => {
+      const tagId = event.serialNumber;
+      if (!tagId) { showToast('Tag has no readable ID'); return; }
+      if (navigator.vibrate) navigator.vibrate(80);
+      openModal(tagId);
+    });
+    ndef.addEventListener('readingerror', () => { showToast('Could not read that tag — try again'); });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (timedOut) return;
+    showBanner('NFC scan failed: ' + (err && err.name ? err.name + ' — ' : '') + (err && err.message ? err.message : 'unknown error') + '.');
+    scanBtn.disabled = false;
+    stopScanning();
+  }
+}
+function stopScanning() {
+  scanning = false;
+  scanBtn.textContent = 'Scan Tag';
+  scanBtn.classList.remove('scanning');
+  scanHint.textContent = 'Tap to start, then hold a tag to the back of your phone';
+}
+scanBtn.addEventListener('click', () => { scanning ? stopScanning() : startScanning(); });
+
+// ---------- Init ----------
+if (!window.isSecureContext) {
+  showBanner('This page must be served over HTTPS (or localhost) for NFC to work.');
+}
+loadItems();
+loadUnits();
+populateFilters();
+renderList();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
