@@ -124,7 +124,10 @@
   }
   .scan-btn { color: var(--accent); }
   .scan-nfc-btn { color: #fbbf24; }
-  .field-note { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .subsection-label {
+    margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--card-border);
+    font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
+  }
 
   .history-section { margin-top: 16px; border-top: 1px solid var(--card-border); padding-top: 12px; }
   .history-toggle { background: none; border: none; color: var(--accent); font-size: 13px; padding: 0; cursor: pointer; }
@@ -208,9 +211,7 @@
     <div class="type-toggle" id="typeToggle">
       <button type="button" data-type="Extinguisher">Extinguisher</button>
       <button type="button" data-type="Emergency Light">Emerg. Light</button>
-      <button type="button" data-type="SCBA Pack">SCBA Pack</button>
-      <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
-      <button type="button" data-type="SCBA Mask">SCBA Mask</button>
+      <button type="button" data-type="SCBA Station">SCBA Station</button>
     </div>
 
     <label>Unit</label>
@@ -246,80 +247,67 @@
       <textarea id="lightCommentsInput" rows="2"></textarea>
     </div>
 
-    <!-- SCBA Pack fields -->
-    <div class="type-fields" id="fields-SCBA Pack">
+    <!-- SCBA Station (combined) fields -->
+    <div class="type-fields" id="fields-SCBA Station">
+      <label>Cabinet Location</label>
+      <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. Reformer Shelter Inside #1">
       <label>Cabinet Condition</label>
-      <select id="packCabinetConditionInput">
+      <select id="scbaCabinetConditionInput">
         <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
       </select>
-      <label>Frame Barcode</label>
+
+      <div class="subsection-label">Frame</div>
+      <label>Frame RFID Tag</label>
       <div class="input-with-scan">
-        <input type="text" id="packFrameBarcodeInput" placeholder="e.g. BPP092">
-        <button type="button" class="scan-btn" data-target="packFrameBarcodeInput">📷</button>
+        <input type="text" id="scbaFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
+        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput">📡</button>
       </div>
       <label>Last Calibration</label>
-      <input type="date" id="packLastCalibrationInput">
-      <label>SCBA General Inspection</label>
-      <select id="packInspectionInput">
-        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
-      </select>
-      <label>Last Inspected</label>
-      <input type="date" id="packLastInspectedInput">
-      <label>NFC Tag ID <span style="font-weight:400;">(optional — this specific frame's RFID)</span></label>
-      <div class="input-with-scan">
-        <input type="text" id="packNfcIdInput" placeholder="Tap 📡 to scan the frame's tag">
-        <button type="button" class="scan-nfc-btn" data-target="packNfcIdInput">📡</button>
-      </div>
-      <label>Comments</label>
-      <textarea id="packCommentsInput" rows="2"></textarea>
-    </div>
+      <input type="date" id="scbaLastCalibrationInput">
 
-    <!-- SCBA Cylinder fields -->
-    <div class="type-fields" id="fields-SCBA Cylinder">
-      <label>Cylinder Barcode</label>
+      <div class="subsection-label">Cylinder</div>
+      <label>Cylinder RFID Tag</label>
       <div class="input-with-scan">
-        <input type="text" id="cylBarcodeInput" placeholder="e.g. FTC046">
-        <button type="button" class="scan-btn" data-target="cylBarcodeInput">📷</button>
+        <input type="text" id="scbaCylinderIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
+        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput">📡</button>
       </div>
       <div class="field-row">
         <div>
           <label>Last Hydro</label>
-          <input type="date" id="cylLastHydroInput">
+          <input type="date" id="scbaLastHydroInput">
         </div>
         <div>
           <label>Pressure (psi)</label>
-          <input type="number" id="cylPressureInput">
+          <input type="number" id="scbaPressureInput">
         </div>
       </div>
-      <label>NFC Tag ID <span style="font-weight:400;">(optional — this specific cylinder's RFID)</span></label>
-      <div class="input-with-scan">
-        <input type="text" id="cylNfcIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
-        <button type="button" class="scan-nfc-btn" data-target="cylNfcIdInput">📡</button>
-      </div>
-      <label>Comments</label>
-      <textarea id="cylCommentsInput" rows="2"></textarea>
-    </div>
 
-    <!-- SCBA Mask fields -->
-    <div class="type-fields" id="fields-SCBA Mask">
-      <label>Size</label>
-      <select id="maskSizeInput">
-        <option value="Large">Large</option><option value="Medium">Medium</option><option value="Small">Small</option>
+      <div class="subsection-label">Masks</div>
+      <label>L Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaLMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput">📡</button>
+      </div>
+      <label>M Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaMMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput">📡</button>
+      </div>
+      <label>S Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaSMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput">📡</button>
+      </div>
+
+      <div class="subsection-label">Overall</div>
+      <label>SCBA General Inspection</label>
+      <select id="scbaInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
       </select>
-      <label>Mask Barcode</label>
-      <div class="input-with-scan">
-        <input type="text" id="maskBarcodeInput" placeholder="e.g. BPM405">
-        <button type="button" class="scan-btn" data-target="maskBarcodeInput">📷</button>
-      </div>
-      <label>EXP / Last Inspected</label>
-      <input type="date" id="maskExpDateInput">
-      <label>NFC Tag ID <span style="font-weight:400;">(optional — this specific mask's RFID)</span></label>
-      <div class="input-with-scan">
-        <input type="text" id="maskNfcIdInput" placeholder="Tap 📡 to scan the mask's tag">
-        <button type="button" class="scan-nfc-btn" data-target="maskNfcIdInput">📡</button>
-      </div>
+      <label>Last Inspected</label>
+      <input type="date" id="scbaLastInspectedInput">
       <label>Comments</label>
-      <textarea id="maskCommentsInput" rows="2"></textarea>
+      <textarea id="scbaCommentsInput" rows="2"></textarea>
     </div>
 
     <div class="history-section" id="historySection" style="display:none;">
@@ -338,11 +326,11 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const STORAGE_KEY = 'safety_tracker_items_v5';
+const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Pack', 'SCBA Cylinder', 'SCBA Mask'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station'];
 
 let items = {};
 let units = [];
@@ -392,15 +380,13 @@ function timeAgo(ts) {
 function itemDisplayName(item, id) {
   if (item.type === 'Extinguisher') return item.extLocation || id;
   if (item.type === 'Emergency Light') return item.lightLocation || id;
-  if (item.type === 'SCBA Pack') return item.packFrameBarcode || id;
-  if (item.type === 'SCBA Cylinder') return item.cylBarcode || id;
-  if (item.type === 'SCBA Mask') return (item.maskSize ? item.maskSize + ' Mask ' : 'Mask ') + (item.maskBarcode || id);
+  if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
   return id;
 }
 function itemInspectionResult(item) {
   if (item.type === 'Extinguisher') return item.extInspection || '';
   if (item.type === 'Emergency Light') return item.lightInspection || '';
-  if (item.type === 'SCBA Pack') return item.packInspection || '';
+  if (item.type === 'SCBA Station') return item.scbaInspection || '';
   return '';
 }
 function itemSummaryLine(item) {
@@ -412,16 +398,13 @@ function itemSummaryLine(item) {
     const p = []; if (item.lightLastInspected) p.push('Inspected ' + item.lightLastInspected);
     return p.join(' · ');
   }
-  if (item.type === 'SCBA Pack') {
-    const p = []; if (item.packLastCalibration) p.push('Cal ' + item.packLastCalibration); if (item.packNfcId) p.push('NFC linked');
-    return p.join(' · ');
-  }
-  if (item.type === 'SCBA Cylinder') {
-    const p = []; if (item.cylLastHydro) p.push('Hydro ' + item.cylLastHydro); if (item.cylPressure) p.push(item.cylPressure + ' psi');
-    return p.join(' · ');
-  }
-  if (item.type === 'SCBA Mask') {
-    const p = []; if (item.maskExpDate) p.push('Exp ' + item.maskExpDate);
+  if (item.type === 'SCBA Station') {
+    const p = [];
+    if (item.scbaFrameId) p.push('Frame linked');
+    if (item.scbaCylinderId) p.push('Cyl linked');
+    const maskCount = [item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId].filter(Boolean).length;
+    if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
+    if (item.scbaLastInspected) p.push('Inspected ' + item.scbaLastInspected);
     return p.join(' · ');
   }
   return '';
@@ -573,25 +556,19 @@ function openModal(id) {
   document.getElementById('lightLastInspectedInput').value = existing?.lightLastInspected || '';
   document.getElementById('lightCommentsInput').value = existing?.lightComments || '';
 
-  document.getElementById('packCabinetConditionInput').value = existing?.packCabinetCondition || '';
-  document.getElementById('packFrameBarcodeInput').value = existing?.packFrameBarcode || '';
-  document.getElementById('packLastCalibrationInput').value = existing?.packLastCalibration || '';
-  document.getElementById('packInspectionInput').value = existing?.packInspection || '';
-  document.getElementById('packLastInspectedInput').value = existing?.packLastInspected || '';
-  document.getElementById('packNfcIdInput').value = existing?.packNfcId || '';
-  document.getElementById('packCommentsInput').value = existing?.packComments || '';
-
-  document.getElementById('cylBarcodeInput').value = existing?.cylBarcode || '';
-  document.getElementById('cylLastHydroInput').value = existing?.cylLastHydro || '';
-  document.getElementById('cylPressureInput').value = existing?.cylPressure || '';
-  document.getElementById('cylNfcIdInput').value = existing?.cylNfcId || '';
-  document.getElementById('cylCommentsInput').value = existing?.cylComments || '';
-
-  document.getElementById('maskSizeInput').value = existing?.maskSize || 'Large';
-  document.getElementById('maskBarcodeInput').value = existing?.maskBarcode || '';
-  document.getElementById('maskExpDateInput').value = existing?.maskExpDate || '';
-  document.getElementById('maskNfcIdInput').value = existing?.maskNfcId || '';
-  document.getElementById('maskCommentsInput').value = existing?.maskComments || '';
+  document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
+  document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
+  document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
+  document.getElementById('scbaLastCalibrationInput').value = existing?.scbaLastCalibration || '';
+  document.getElementById('scbaCylinderIdInput').value = existing?.scbaCylinderId || '';
+  document.getElementById('scbaLastHydroInput').value = existing?.scbaLastHydro || '';
+  document.getElementById('scbaPressureInput').value = existing?.scbaPressure || '';
+  document.getElementById('scbaLMaskIdInput').value = existing?.scbaLMaskId || '';
+  document.getElementById('scbaMMaskIdInput').value = existing?.scbaMMaskId || '';
+  document.getElementById('scbaSMaskIdInput').value = existing?.scbaSMaskId || '';
+  document.getElementById('scbaInspectionInput').value = existing?.scbaInspection || '';
+  document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
+  document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
 
   renderHistory(existing);
   document.getElementById('deleteItemBtn').style.display = existing ? 'block' : 'none';
@@ -625,25 +602,19 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     lightLastInspected: document.getElementById('lightLastInspectedInput').value,
     lightComments: document.getElementById('lightCommentsInput').value.trim(),
 
-    packCabinetCondition: document.getElementById('packCabinetConditionInput').value,
-    packFrameBarcode: document.getElementById('packFrameBarcodeInput').value.trim(),
-    packLastCalibration: document.getElementById('packLastCalibrationInput').value,
-    packInspection: document.getElementById('packInspectionInput').value,
-    packLastInspected: document.getElementById('packLastInspectedInput').value,
-    packNfcId: document.getElementById('packNfcIdInput').value.trim(),
-    packComments: document.getElementById('packCommentsInput').value.trim(),
-
-    cylBarcode: document.getElementById('cylBarcodeInput').value.trim(),
-    cylLastHydro: document.getElementById('cylLastHydroInput').value,
-    cylPressure: document.getElementById('cylPressureInput').value,
-    cylNfcId: document.getElementById('cylNfcIdInput').value.trim(),
-    cylComments: document.getElementById('cylCommentsInput').value.trim(),
-
-    maskSize: document.getElementById('maskSizeInput').value,
-    maskBarcode: document.getElementById('maskBarcodeInput').value.trim(),
-    maskExpDate: document.getElementById('maskExpDateInput').value,
-    maskNfcId: document.getElementById('maskNfcIdInput').value.trim(),
-    maskComments: document.getElementById('maskCommentsInput').value.trim()
+    scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
+    scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
+    scbaFrameId: document.getElementById('scbaFrameIdInput').value.trim(),
+    scbaLastCalibration: document.getElementById('scbaLastCalibrationInput').value,
+    scbaCylinderId: document.getElementById('scbaCylinderIdInput').value.trim(),
+    scbaLastHydro: document.getElementById('scbaLastHydroInput').value,
+    scbaPressure: document.getElementById('scbaPressureInput').value,
+    scbaLMaskId: document.getElementById('scbaLMaskIdInput').value.trim(),
+    scbaMMaskId: document.getElementById('scbaMMaskIdInput').value.trim(),
+    scbaSMaskId: document.getElementById('scbaSMaskIdInput').value.trim(),
+    scbaInspection: document.getElementById('scbaInspectionInput').value,
+    scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
+    scbaComments: document.getElementById('scbaCommentsInput').value.trim()
   };
 
   const now = Date.now();
@@ -683,9 +654,11 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'Collection Point Barcode', 'Type', 'Unit',
     'Ext Location', 'Ext Weight & Agent', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
-    'Pack Cabinet Condition', 'Pack Frame Barcode', 'Pack Last Calibration', 'Pack Inspection', 'Pack Last Inspected', 'Pack NFC Tag ID', 'Pack Comments',
-    'Cyl Barcode', 'Cyl Last Hydro', 'Cyl Pressure', 'Cyl NFC Tag ID', 'Cyl Comments',
-    'Mask Size', 'Mask Barcode', 'Mask EXP Date', 'Mask NFC Tag ID', 'Mask Comments',
+    'SCBA Cabinet Location', 'SCBA Cabinet Condition',
+    'SCBA Frame RFID', 'SCBA Last Calibration',
+    'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
+    'SCBA L Mask RFID', 'SCBA M Mask RFID', 'SCBA S Mask RFID',
+    'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
     'Scan Count', 'Created', 'Last Scanned'
   ];
   const rows = [header];
@@ -694,9 +667,11 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       id, i.type || '', i.unit || '',
       i.extLocation || '', i.extWeightAgent || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
-      i.packCabinetCondition || '', i.packFrameBarcode || '', i.packLastCalibration || '', i.packInspection || '', i.packLastInspected || '', i.packNfcId || '', i.packComments || '',
-      i.cylBarcode || '', i.cylLastHydro || '', i.cylPressure || '', i.cylNfcId || '', i.cylComments || '',
-      i.maskSize || '', i.maskBarcode || '', i.maskExpDate || '', i.maskNfcId || '', i.maskComments || '',
+      i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
+      i.scbaFrameId || '', i.scbaLastCalibration || '',
+      i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
+      i.scbaLMaskId || '', i.scbaMMaskId || '', i.scbaSMaskId || '',
+      i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
       (i.history || []).length,
       i.createdAt ? new Date(i.createdAt).toISOString() : '',
       i.updatedAt ? new Date(i.updatedAt).toISOString() : ''
@@ -722,10 +697,9 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   }
 });
 
-// ---------- Camera barcode scanner (native BarcodeDetector, no external libs) ----------
+// ---------- Camera barcode scanner (entry point — native BarcodeDetector, no external libs) ----------
 let scannerStream = null;
 let scannerRAF = null;
-let scannerTargetId = null;
 let scannerEntryMode = false;
 let barcodeDetector = null;
 if ('BarcodeDetector' in window) {
@@ -736,18 +710,15 @@ if ('BarcodeDetector' in window) {
   } catch (e) { barcodeDetector = null; }
 }
 
-async function openScanner({ targetId = null, entry = false } = {}) {
+async function openScanner() {
   if (!barcodeDetector) {
     showToast('Camera barcode scanning isn\'t supported in this browser');
-    if (entry) {
-      const val = prompt('Enter the collection point barcode manually:');
-      const trimmed = (val || '').trim();
-      if (trimmed) openModal(trimmed);
-    }
+    const val = prompt('Enter the collection point barcode manually:');
+    const trimmed = (val || '').trim();
+    if (trimmed) openModal(trimmed);
     return;
   }
-  scannerTargetId = targetId;
-  scannerEntryMode = entry;
+  scannerEntryMode = true;
   const overlay = document.getElementById('scannerOverlay');
   const video = document.getElementById('scannerVideo');
   const hint = document.getElementById('scannerHint');
@@ -773,17 +744,9 @@ function scanLoop() {
     if (codes && codes.length > 0 && codes[0].rawValue) {
       const value = codes[0].rawValue;
       if (navigator.vibrate) navigator.vibrate(60);
-      const wasEntry = scannerEntryMode;
-      const targetId = scannerTargetId;
       closeScanner();
-      if (wasEntry) {
-        showToast('Barcode: ' + value);
-        openModal(value);
-      } else if (targetId) {
-        const input = document.getElementById(targetId);
-        if (input) input.value = value;
-        showToast('Scanned: ' + value);
-      }
+      showToast('Barcode: ' + value);
+      openModal(value);
       return;
     }
     scannerRAF = requestAnimationFrame(scanLoop);
@@ -796,23 +759,18 @@ function closeScanner() {
   if (scannerRAF) { cancelAnimationFrame(scannerRAF); scannerRAF = null; }
   if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
   document.getElementById('scannerOverlay').classList.remove('show');
-  scannerTargetId = null;
   scannerEntryMode = false;
 }
 
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.scan-btn');
-  if (btn) openScanner({ targetId: btn.dataset.target });
-});
 document.getElementById('scannerCancelBtn').addEventListener('click', closeScanner);
-document.getElementById('scanBarcodeEntryBtn').addEventListener('click', () => openScanner({ entry: true }));
+document.getElementById('scanBarcodeEntryBtn').addEventListener('click', openScanner);
 document.getElementById('manualEntryLink').addEventListener('click', () => {
   const val = prompt('Enter the collection point barcode manually:');
   const trimmed = (val || '').trim();
   if (trimmed) openModal(trimmed);
 });
 
-// ---------- NFC field-fill (optional — links a specific asset's RFID to a record) ----------
+// ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.scan-nfc-btn');
   if (btn) scanNfcIntoField(btn.dataset.target);
