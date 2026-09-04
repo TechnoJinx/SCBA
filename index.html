@@ -6,7 +6,7 @@
 <title>Safety Equipment Tracker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f172a">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAEf0lEQVR4nO3bzU1cMRRAYRNlzxKJDsiSFuiCGiiHGuiCFtimg9SRxZOeRjMwCT7XP+/6fKtIEWDhM9dmfm5u734VqdaP0QvQsRmQEAMSYkBCDEiIAQkxICEGJMSAhBiQEAMSYkBCDEiIAQn5OXoBpZTy8PYxeglH9fv5cewCbka9H8howg2JqXdAdtNBz5I6BXS9mz8vTx3WkNL96/uV/+1QUo+APq3HaMJ9GlPrhtoGdJmO3XRwWVK7jBoGdFaP6XR2llGjhpoEZDrzaJ1R/BOJ1jOVs99/+F/BwRPodH2mM5XTURQ4hyInkPXM7HRHAudQWEDWM78WDcUEZD1HEd5QQEDWcyyxDUXegaznKAJ3iga0J2w9x7LvFxxCKCBfWs+B7GPMEeb4OaKQXasPyMMrAX6QVQbk4ZVP3Z7SI8zxc3RwB/1UhpCagLz9JENuQk4gIQYk5NsBeX6lVH2KOYGETPHR5uGuf7rqCsewE0jI9wLyApRY3TXICSTEgIQYkBADEmJAQgxIiAEJMSAhBiRk6dfCql8Cu/wOyz41v2hAPJ1Pv+GCGS0XUHg6l998qYzWugM1rafzT5nEKhOo86auM4qWmECjRsIKoyh/QGN3MX1D+QNSU8kDmmEAzLCGdjIHNM/OzbOScJkDUgdpA5rtQT/beqKkDUh95Axozof7nKuCcgakbgxISMKAZj4pZl5bnYQBqScDEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhBiTEgIQYkBADEmJAQgxIiAEJMSAhCQP68/I0eglfmnltdRIGpJ4MSEjOgOY8KeZcFZQzIHWTNqDZHu6zrSdK2oDUR+aA5nnQz7OScJkDKnPs3AxraCd5QGotf0BjB0Du8VNWCKiM28X09ZRSfo5eQCfbXt6/vvf8cStYYgLt+uzrOvWUdSbQrukoWiqdzXIBbcIzWjCdzc3t3a9vfcHD28f2j0y/suqSUv4Sfj8//v9XLTqBzmTqoLO1LtEKZ0BCvh3QfkB2e05FHdRdgIoTSJABCakJyFMsmerzqziBBNGAHEJHB3ewMqCKWafJ1e1p/QTyJpQAuf1sYu5ANnREIbuGAvIgy4HsI51AHmQHxQ+vTeSf8TZ0FIE7FRDQacI2NL/TPeKXkJgJZENHEVtPCTzCbGh+4fWU2DuQDc2sRT2l4j3R/7S/aXrju0WHO3swxz75Ev9i6tn6HEVjNa2ntJhAO0fRWK3T2TQMqFw0VMyoi8up3+41g7YBbS4zKpbUwKe3hdYvN/UIqHzR0M6Yql2/YnZ4sbJTQLvrJSlEzxe5ewe0s6RwQ94cMSygU8ZUbfg7aqYISMflpzKEGJAQAxJiQEIMSIgBCTEgIQYkxICEGJAQAxJiQEIMSMhfzFxI5X+VQzwAAAAASUVORK5CYII=">
 <style>
   :root {
     --bg: #0f172a; --card: #1e293b; --card-border: #334155;
@@ -130,9 +130,41 @@
     z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
   }
   .toast.show { opacity: 1; }
+  .input-with-scan { display: flex; gap: 6px; align-items: stretch; }
+  .input-with-scan input { flex: 1; }
+  .scan-btn {
+    flex: 0 0 auto; width: 42px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; color: var(--accent); font-size: 18px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .scanner-overlay {
+    position: fixed; inset: 0; background: #000; display: none;
+    flex-direction: column; z-index: 300;
+  }
+  .scanner-overlay.show { display: flex; }
+  .scanner-overlay video { flex: 1; width: 100%; object-fit: cover; }
+  .scanner-hint {
+    position: absolute; top: 16px; left: 0; right: 0; text-align: center;
+    color: #fff; font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); padding: 0 16px;
+  }
+  .scanner-frame {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 80%; max-width: 320px; height: 120px; border: 3px solid var(--accent);
+    border-radius: 12px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4);
+  }
+  .scanner-cancel {
+    padding: 16px; background: #000; border: none; color: #fff; font-size: 15px;
+    font-weight: 600; cursor: pointer;
+  }
 </style>
 </head>
 <body>
+<div class="scanner-overlay" id="scannerOverlay">
+  <div class="scanner-hint" id="scannerHint">Point camera at the barcode</div>
+  <video id="scannerVideo" autoplay playsinline muted></video>
+  <div class="scanner-frame"></div>
+  <button type="button" class="scanner-cancel" id="scannerCancelBtn">Cancel</button>
+</div>
 
 <header>
   <h1>🦺 Safety Equipment Tracker</h1>
@@ -186,7 +218,10 @@
         </div>
         <div>
           <label>Barcode</label>
-          <input type="text" id="extBarcodeInput" placeholder="e.g. A04435">
+          <div class="input-with-scan">
+            <input type="text" id="extBarcodeInput" placeholder="e.g. A04435">
+            <button type="button" class="scan-btn" data-target="extBarcodeInput">📷</button>
+          </div>
         </div>
       </div>
       <label>General Inspection</label>
@@ -209,7 +244,10 @@
     <!-- Emergency Light fields -->
     <div class="type-fields" id="fields-Emergency Light">
       <label>Light Barcode & Location</label>
-      <input type="text" id="lightLocationInput" placeholder="e.g. A04436 RE Shelter NE Dr">
+      <div class="input-with-scan">
+        <input type="text" id="lightLocationInput" placeholder="e.g. A04436 RE Shelter NE Dr">
+        <button type="button" class="scan-btn" data-target="lightLocationInput">📷</button>
+      </div>
       <label>General Inspection</label>
       <select id="lightInspectionInput">
         <option value="">— Not set —</option>
@@ -226,7 +264,10 @@
     <!-- SCBA Station fields -->
     <div class="type-fields" id="fields-SCBA Station">
       <label>Cabinet Barcode & Location</label>
-      <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. A03773 Reformer Shelter Inside #1">
+      <div class="input-with-scan">
+        <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. A03773 Reformer Shelter Inside #1">
+        <button type="button" class="scan-btn" data-target="scbaCabinetLocationInput">📷</button>
+      </div>
       <label>Cabinet Condition</label>
       <select id="scbaCabinetConditionInput">
         <option value="">— Not set —</option>
@@ -237,7 +278,10 @@
       <div class="field-row">
         <div>
           <label>Frame Barcode</label>
-          <input type="text" id="scbaFrameBarcodeInput" placeholder="e.g. BPP092">
+          <div class="input-with-scan">
+            <input type="text" id="scbaFrameBarcodeInput" placeholder="e.g. BPP092">
+            <button type="button" class="scan-btn" data-target="scbaFrameBarcodeInput">📷</button>
+          </div>
         </div>
         <div>
           <label>Last Calibration</label>
@@ -247,7 +291,10 @@
       <div class="field-row">
         <div>
           <label>Cylinder Barcode</label>
-          <input type="text" id="scbaCylinderBarcodeInput" placeholder="e.g. FTC046">
+          <div class="input-with-scan">
+            <input type="text" id="scbaCylinderBarcodeInput" placeholder="e.g. FTC046">
+            <button type="button" class="scan-btn" data-target="scbaCylinderBarcodeInput">📷</button>
+          </div>
         </div>
         <div>
           <label>Last Hydro</label>
@@ -261,19 +308,20 @@
         <option value="Fail">Fail</option>
         <option value="N/A">N/A</option>
       </select>
-      <div class="field-row">
-        <div>
-          <label>L Mask Barcode</label>
-          <input type="text" id="scbaLMaskInput">
-        </div>
-        <div>
-          <label>M Mask Barcode</label>
-          <input type="text" id="scbaMMaskInput">
-        </div>
-        <div>
-          <label>S Mask Barcode</label>
-          <input type="text" id="scbaSMaskInput">
-        </div>
+      <label>L Mask Barcode</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaLMaskInput">
+        <button type="button" class="scan-btn" data-target="scbaLMaskInput">📷</button>
+      </div>
+      <label>M Mask Barcode</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaMMaskInput">
+        <button type="button" class="scan-btn" data-target="scbaMMaskInput">📷</button>
+      </div>
+      <label>S Mask Barcode</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaSMaskInput">
+        <button type="button" class="scan-btn" data-target="scbaSMaskInput">📷</button>
       </div>
       <label>Last Inspected</label>
       <input type="date" id="scbaLastInspectedInput">
@@ -681,6 +729,77 @@ document.getElementById('clearBtn').addEventListener('click', () => {
     showToast('Cleared');
   }
 });
+
+// ---------- Camera barcode scanner (native BarcodeDetector, no external libs) ----------
+let scannerStream = null;
+let scannerRAF = null;
+let scannerTargetId = null;
+let barcodeDetector = null;
+if ('BarcodeDetector' in window) {
+  try {
+    barcodeDetector = new BarcodeDetector({
+      formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code', 'data_matrix', 'itf']
+    });
+  } catch (e) { barcodeDetector = null; }
+}
+
+async function openBarcodeScanner(targetId) {
+  if (!barcodeDetector) {
+    showToast('Barcode scanning isn\'t supported in this browser — enter it manually');
+    return;
+  }
+  scannerTargetId = targetId;
+  const overlay = document.getElementById('scannerOverlay');
+  const video = document.getElementById('scannerVideo');
+  const hint = document.getElementById('scannerHint');
+  hint.textContent = 'Point camera at the barcode';
+  overlay.classList.add('show');
+
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = scannerStream;
+    await video.play();
+    scanLoop();
+  } catch (err) {
+    hint.textContent = 'Camera access failed: ' + (err && err.message ? err.message : 'unknown error');
+  }
+}
+
+function scanLoop() {
+  const video = document.getElementById('scannerVideo');
+  if (!scannerStream) return;
+  barcodeDetector.detect(video).then((codes) => {
+    if (codes && codes.length > 0) {
+      const value = codes[0].rawValue;
+      if (value) {
+        if (navigator.vibrate) navigator.vibrate(60);
+        const input = document.getElementById(scannerTargetId);
+        if (input) input.value = value;
+        closeBarcodeScanner();
+        showToast('Scanned: ' + value);
+        return;
+      }
+    }
+    scannerRAF = requestAnimationFrame(scanLoop);
+  }).catch(() => {
+    scannerRAF = requestAnimationFrame(scanLoop);
+  });
+}
+
+function closeBarcodeScanner() {
+  if (scannerRAF) { cancelAnimationFrame(scannerRAF); scannerRAF = null; }
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  document.getElementById('scannerOverlay').classList.remove('show');
+  scannerTargetId = null;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.scan-btn');
+  if (btn) openBarcodeScanner(btn.dataset.target);
+});
+document.getElementById('scannerCancelBtn').addEventListener('click', closeBarcodeScanner);
 
 // ---------- NFC ----------
 const scanBtn = document.getElementById('scanBtn');
