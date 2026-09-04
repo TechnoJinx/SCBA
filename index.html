@@ -117,13 +117,14 @@
 
   .input-with-scan { display: flex; gap: 6px; align-items: stretch; }
   .input-with-scan input { flex: 1; }
-  .scan-btn, .scan-nfc-btn {
+  .scan-btn, .scan-nfc-btn, .write-nfc-btn {
     flex: 0 0 auto; width: 42px; border-radius: 8px; border: 1px solid var(--card-border);
     background: #0f172a; font-size: 18px; cursor: pointer; display: flex;
     align-items: center; justify-content: center;
   }
   .scan-btn { color: var(--accent); }
   .scan-nfc-btn { color: #fbbf24; }
+  .write-nfc-btn { color: #a78bfa; }
   .subsection-label {
     margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--card-border);
     font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
@@ -260,7 +261,8 @@
       <label>Frame RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
-        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaFrameIdInput" title="Write ID to tag">✏️</button>
       </div>
       <label>Last Calibration</label>
       <input type="date" id="scbaLastCalibrationInput">
@@ -269,7 +271,8 @@
       <label>Cylinder RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaCylinderIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
-        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaCylinderIdInput" title="Write ID to tag">✏️</button>
       </div>
       <div class="field-row">
         <div>
@@ -286,17 +289,20 @@
       <label>L Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaLMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaLMaskIdInput" title="Write ID to tag">✏️</button>
       </div>
       <label>M Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaMMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaMMaskIdInput" title="Write ID to tag">✏️</button>
       </div>
       <label>S Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaSMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaSMaskIdInput" title="Write ID to tag">✏️</button>
       </div>
 
       <div class="subsection-label">Overall</div>
@@ -772,9 +778,25 @@ document.getElementById('manualEntryLink').addEventListener('click', () => {
 
 // ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.scan-nfc-btn');
-  if (btn) scanNfcIntoField(btn.dataset.target);
+  const readBtn = e.target.closest('.scan-nfc-btn');
+  if (readBtn) scanNfcIntoField(readBtn.dataset.target);
+  const writeBtn = e.target.closest('.write-nfc-btn');
+  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target);
 });
+
+function readTextRecord(message) {
+  if (!message || !message.records) return null;
+  for (const record of message.records) {
+    if (record.recordType === 'text') {
+      try {
+        const decoder = new TextDecoder(record.encoding || 'utf-8');
+        const text = decoder.decode(record.data).trim();
+        if (text) return text;
+      } catch (e) { /* ignore malformed record */ }
+    }
+  }
+  return null;
+}
 
 async function scanNfcIntoField(targetInputId) {
   if (!('NDEFReader' in window)) {
@@ -793,16 +815,50 @@ async function scanNfcIntoField(targetInputId) {
       if (done) return;
       done = true;
       clearTimeout(timeoutId);
-      const tagId = event.serialNumber;
-      if (!tagId) { showToast('Tag has no readable ID'); return; }
+      const writtenId = readTextRecord(event.message);
+      const value = writtenId || event.serialNumber;
+      if (!value) { showToast('Tag has no readable ID'); return; }
       if (navigator.vibrate) navigator.vibrate(60);
       const input = document.getElementById(targetInputId);
-      if (input) input.value = tagId;
-      showToast('NFC linked: ' + tagId);
+      if (input) input.value = value;
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
     });
   } catch (err) {
     clearTimeout(timeoutId);
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
+  }
+}
+
+async function writeNfcIdToTag(targetInputId) {
+  if (!('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser');
+    return;
+  }
+  const input = document.getElementById(targetInputId);
+  const current = input ? input.value : '';
+  const idValue = prompt('Inventory ID to write onto the tag:', current || '');
+  const trimmed = (idValue || '').trim();
+  if (!trimmed) return;
+
+  showToast('Hold the blank/existing tag to the back of your phone to write…');
+  let done = false;
+  const timeoutId = setTimeout(() => {
+    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+  }, 10000);
+  try {
+    const writer = new NDEFReader();
+    await writer.write({ records: [{ recordType: 'text', data: trimmed }] });
+    done = true;
+    clearTimeout(timeoutId);
+    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    if (input) input.value = trimmed;
+    showToast('Wrote "' + trimmed + '" to tag');
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (!done) {
+      done = true;
+      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
+    }
   }
 }
 
