@@ -29,12 +29,16 @@
     margin: 16px; padding: 26px 16px; border-radius: 16px;
     background: var(--card); border: 1px solid var(--card-border); text-align: center;
   }
-  #scanBarcodeEntryBtn {
-    background: var(--accent); color: #052e3d; border: none; border-radius: 999px;
-    padding: 16px 40px; font-size: 16px; font-weight: 600; cursor: pointer;
-    transition: transform 0.1s, background 0.2s;
+  .entry-buttons { display: flex; gap: 8px; }
+  .entry-buttons button {
+    flex: 1; border: none; border-radius: 999px; padding: 15px 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.1s, background 0.2s;
   }
-  #scanBarcodeEntryBtn:active { transform: scale(0.97); }
+  .entry-buttons button:active { transform: scale(0.97); }
+  #scanBarcodeEntryBtn { background: var(--accent); color: #052e3d; }
+  #scanNfcEntryBtn { background: #fbbf24; color: #3a2c02; }
+  #scanNfcEntryBtn.scanning { background: var(--danger); color: #3f0d0d; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
   button:disabled { background: #475569 !important; color: #94a3b8 !important; cursor: not-allowed; }
   .scan-hint { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
   .manual-link {
@@ -184,9 +188,12 @@
 <div class="status-banner" id="statusBanner"></div>
 
 <div class="scan-area">
-  <button id="scanBarcodeEntryBtn">📷 Scan Collection Point Barcode</button>
-  <div class="scan-hint" id="scanHint">Scan the barcode at the collection point to find or add its record</div>
-  <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter a barcode manually</button>
+  <div class="entry-buttons">
+    <button id="scanBarcodeEntryBtn">📷 Scan Barcode</button>
+    <button id="scanNfcEntryBtn">📡 Scan NFC</button>
+  </div>
+  <div class="scan-hint" id="scanHint">Scan the collection point's barcode or RFID tag to find or add its record</div>
+  <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
 </div>
 
 <div class="toolbar">
@@ -545,7 +552,7 @@ function openModal(id) {
   currentId = id;
   const existing = items[id];
   document.getElementById('modalTitle').textContent = existing ? 'Edit Item' : 'New Item';
-  document.getElementById('modalTagId').textContent = 'Barcode: ' + id;
+  document.getElementById('modalTagId').textContent = 'ID: ' + id;
 
   const defaultType = existing?.type || 'Extinguisher';
   setType(defaultType);
@@ -771,9 +778,50 @@ function closeScanner() {
 document.getElementById('scannerCancelBtn').addEventListener('click', closeScanner);
 document.getElementById('scanBarcodeEntryBtn').addEventListener('click', openScanner);
 document.getElementById('manualEntryLink').addEventListener('click', () => {
-  const val = prompt('Enter the collection point barcode manually:');
+  const val = prompt('Enter the collection point barcode or NFC ID manually:');
   const trimmed = (val || '').trim();
   if (trimmed) openModal(trimmed);
+});
+
+// ---------- NFC entry (alternate way to find/add a collection point) ----------
+const scanNfcEntryBtn = document.getElementById('scanNfcEntryBtn');
+let nfcEntryScanning = false;
+
+async function startNfcEntryScanning() {
+  if (!('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser — use Scan Barcode instead');
+    return;
+  }
+  nfcEntryScanning = true;
+  scanNfcEntryBtn.textContent = 'Scanning… (tap to stop)';
+  scanNfcEntryBtn.classList.add('scanning');
+  showToast('Hold the collection point\'s tag to the back of your phone…');
+
+  try {
+    const reader = new NDEFReader();
+    await reader.scan();
+    reader.addEventListener('reading', (event) => {
+      if (!nfcEntryScanning) return;
+      const writtenId = readTextRecord(event.message);
+      const value = writtenId || event.serialNumber;
+      if (!value) { showToast('Tag has no readable ID'); return; }
+      if (navigator.vibrate) navigator.vibrate(80);
+      stopNfcEntryScanning();
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      openModal(value);
+    });
+  } catch (err) {
+    showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
+    stopNfcEntryScanning();
+  }
+}
+function stopNfcEntryScanning() {
+  nfcEntryScanning = false;
+  scanNfcEntryBtn.textContent = '📡 Scan NFC';
+  scanNfcEntryBtn.classList.remove('scanning');
+}
+scanNfcEntryBtn.addEventListener('click', () => {
+  nfcEntryScanning ? stopNfcEntryScanning() : startNfcEntryScanning();
 });
 
 // ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
