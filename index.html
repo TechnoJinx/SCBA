@@ -229,8 +229,10 @@
       <button type="button" data-type="SCBA Mask">SCBA Mask</button>
     </div>
 
-    <label>Unit</label>
-    <select id="unitInput"></select>
+    <div id="unitFieldWrapper">
+      <label>Unit</label>
+      <select id="unitInput"></select>
+    </div>
 
     <!-- Extinguisher fields -->
     <div class="type-fields" id="fields-Extinguisher">
@@ -702,6 +704,7 @@ function renderList() {
 }
 
 // ---------- Type toggle ----------
+const NO_UNIT_TYPES = ['SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 function setType(type) {
   currentType = type;
   document.querySelectorAll('#typeToggle button').forEach(b => {
@@ -710,6 +713,7 @@ function setType(type) {
   ALL_TYPES.forEach(t => {
     document.getElementById('fields-' + t).classList.toggle('active', t === type);
   });
+  document.getElementById('unitFieldWrapper').style.display = NO_UNIT_TYPES.includes(type) ? 'none' : '';
 }
 document.getElementById('typeToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-type]');
@@ -833,7 +837,7 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
 
 document.getElementById('saveItemBtn').addEventListener('click', () => {
   if (!currentId) return;
-  const unit = document.getElementById('unitInput').value;
+  const unit = NO_UNIT_TYPES.includes(currentType) ? '' : document.getElementById('unitInput').value;
   if (unit && unit !== ADD_NEW_VALUE) ensureUnit(unit);
 
   const draft = {
