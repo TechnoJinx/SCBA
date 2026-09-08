@@ -468,6 +468,29 @@ function populateFilters() {
   unitSel.value = units.includes(curUnit) ? curUnit : '';
 }
 
+function findMatchingId(value) {
+  if (items[value]) return value;
+  const v = String(value).trim().toLowerCase();
+  if (!v) return null;
+  for (const [id, item] of Object.entries(items)) {
+    if (item.type === 'SCBA Station') {
+      if ([item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId]
+        .some(f => f && String(f).trim().toLowerCase() === v)) {
+        return id;
+      }
+    }
+  }
+  return null;
+}
+
+function itemSearchHay(item, id) {
+  const parts = [itemDisplayName(item, id), item.type, item.unit, id];
+  if (item.type === 'SCBA Station') {
+    parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
+  }
+  return parts.filter(Boolean).join(' ').toLowerCase();
+}
+
 function renderList() {
   const listEl = document.getElementById('itemList');
   const query = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -477,7 +500,7 @@ function renderList() {
     if (typeFilterVal && item.type !== typeFilterVal) return false;
     if (unitFilterVal && item.unit !== unitFilterVal) return false;
     if (!query) return true;
-    const hay = [itemDisplayName(item, id), item.type, item.unit, id].join(' ').toLowerCase();
+    const hay = itemSearchHay(item, id);
     return hay.includes(query);
   }).sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
 
@@ -789,8 +812,13 @@ function scanLoop() {
       const value = codes[0].rawValue;
       if (navigator.vibrate) navigator.vibrate(60);
       closeScanner();
-      showToast('Barcode: ' + value);
-      openModal(value);
+      const matchId = findMatchingId(value);
+      if (matchId && matchId !== value) {
+        showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
+      } else {
+        showToast('Barcode: ' + value);
+      }
+      openModal(matchId || value);
       return;
     }
     scannerRAF = requestAnimationFrame(scanLoop);
@@ -838,8 +866,13 @@ async function startNfcEntryScanning() {
       if (!value) { showToast('Tag has no readable ID'); return; }
       if (navigator.vibrate) navigator.vibrate(80);
       stopNfcEntryScanning();
-      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
-      openModal(value);
+      const matchId = findMatchingId(value);
+      if (matchId && matchId !== value) {
+        showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
+      } else {
+        showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      }
+      openModal(matchId || value);
     });
   } catch (err) {
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
