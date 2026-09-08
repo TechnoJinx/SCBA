@@ -220,6 +220,7 @@
       <button type="button" data-type="Extinguisher">Extinguisher</button>
       <button type="button" data-type="Emergency Light">Emerg. Light</button>
       <button type="button" data-type="SCBA Station">SCBA Station</button>
+      <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
     </div>
 
     <label>Unit</label>
@@ -323,6 +324,28 @@
       <textarea id="scbaCommentsInput" rows="2"></textarea>
     </div>
 
+    <!-- SCBA Cylinder (standalone — spare/loose cylinder, no frame or masks attached) -->
+    <div class="type-fields" id="fields-SCBA Cylinder">
+      <label>Cylinder RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdCylIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdCylIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="stdCylIdInput" title="Write ID to tag">✏️</button>
+      </div>
+      <div class="field-row">
+        <div>
+          <label>Last Hydro</label>
+          <input type="date" id="stdCylLastHydroInput">
+        </div>
+        <div>
+          <label>Pressure (psi)</label>
+          <input type="number" id="stdCylPressureInput">
+        </div>
+      </div>
+      <label>Comments</label>
+      <textarea id="stdCylCommentsInput" rows="2"></textarea>
+    </div>
+
     <div class="history-section" id="historySection" style="display:none;">
       <button type="button" class="history-toggle" id="historyToggle">Show scan history ▾</button>
       <div class="history-list" id="historyList"></div>
@@ -343,7 +366,7 @@ const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station', 'SCBA Cylinder'];
 
 let items = {};
 let units = [];
@@ -363,10 +386,14 @@ function expandSeedData(compact) {
       history: [{ location: lightLocation, result: lightInspection, timestamp: now }], createdAt: now, updatedAt: now };
   });
   (compact.scba || []).forEach(([id, unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
-      scbaCylinderId, scbaLastHydro, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments]) => {
+      scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments]) => {
     out[id] = { type: 'SCBA Station', unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
-      scbaCylinderId, scbaLastHydro, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments,
+      scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments,
       history: [{ location: scbaCabinetLocation, result: scbaInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.stdcyl || []).forEach(([id, unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments]) => {
+    out[id] = { type: 'SCBA Cylinder', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
+      history: [{ location: stdCylId || id, result: '', timestamp: now }], createdAt: now, updatedAt: now };
   });
   return out;
 }
@@ -425,6 +452,7 @@ function itemDisplayName(item, id) {
   if (item.type === 'Extinguisher') return item.extLocation || id;
   if (item.type === 'Emergency Light') return item.lightLocation || id;
   if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
+  if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
   return id;
 }
 function itemInspectionResult(item) {
@@ -449,6 +477,10 @@ function itemSummaryLine(item) {
     const maskCount = [item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId].filter(Boolean).length;
     if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
     if (item.scbaLastInspected) p.push('Inspected ' + item.scbaLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Cylinder') {
+    const p = []; if (item.stdCylLastHydro) p.push('Hydro ' + item.stdCylLastHydro); if (item.stdCylPressure) p.push(item.stdCylPressure + ' psi');
     return p.join(' · ');
   }
   return '';
@@ -637,6 +669,11 @@ function openModal(id) {
   document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
   document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
 
+  document.getElementById('stdCylIdInput').value = existing?.stdCylId || '';
+  document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || '';
+  document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
+  document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
+
   renderHistory(existing);
   document.getElementById('deleteItemBtn').style.display = existing ? 'block' : 'none';
   document.getElementById('modalOverlay').classList.add('show');
@@ -681,7 +718,12 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     scbaSMaskId: document.getElementById('scbaSMaskIdInput').value.trim(),
     scbaInspection: document.getElementById('scbaInspectionInput').value,
     scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
-    scbaComments: document.getElementById('scbaCommentsInput').value.trim()
+    scbaComments: document.getElementById('scbaCommentsInput').value.trim(),
+
+    stdCylId: document.getElementById('stdCylIdInput').value.trim(),
+    stdCylLastHydro: document.getElementById('stdCylLastHydroInput').value,
+    stdCylPressure: document.getElementById('stdCylPressureInput').value,
+    stdCylComments: document.getElementById('stdCylCommentsInput').value.trim()
   };
 
   const now = Date.now();
@@ -726,6 +768,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
     'SCBA L Mask RFID', 'SCBA M Mask RFID', 'SCBA S Mask RFID',
     'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
+    'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Comments',
     'Scan Count', 'Created', 'Last Scanned'
   ];
   const rows = [header];
@@ -739,6 +782,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
       i.scbaLMaskId || '', i.scbaMMaskId || '', i.scbaSMaskId || '',
       i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
+      i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylComments || '',
       (i.history || []).length,
       i.createdAt ? new Date(i.createdAt).toISOString() : '',
       i.updatedAt ? new Date(i.updatedAt).toISOString() : ''
