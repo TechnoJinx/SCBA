@@ -273,9 +273,9 @@
       <label>Frame RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
-        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaFrameIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="scbaFrameIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Write ID to tag">✏️</button>
       </div>
       <label>Last Calibration</label>
       <input type="date" id="scbaLastCalibrationInput">
@@ -284,9 +284,9 @@
       <label>Cylinder RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaCylinderIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
-        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaCylinderIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="scbaCylinderIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Write ID to tag">✏️</button>
       </div>
       <div class="field-row">
         <div>
@@ -303,24 +303,32 @@
       <label>L Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaLMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaLMaskIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="scbaLMaskIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Write ID to tag">✏️</button>
       </div>
+      <label>L Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaLMaskExpDateInput">
+
       <label>M Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaMMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaMMaskIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="scbaMMaskIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Write ID to tag">✏️</button>
       </div>
+      <label>M Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaMMaskExpDateInput">
+
       <label>S Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="scbaSMaskIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaSMaskIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="scbaSMaskIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Write ID to tag">✏️</button>
       </div>
+      <label>S Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaSMaskExpDateInput">
 
       <div class="subsection-label">Overall</div>
       <label>SCBA General Inspection</label>
@@ -338,9 +346,9 @@
       <label>Cylinder RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="stdCylIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
-        <button type="button" class="scan-nfc-btn" data-target="stdCylIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdCylIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="stdCylIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Write ID to tag">✏️</button>
       </div>
       <div class="field-row">
         <div>
@@ -361,9 +369,9 @@
       <label>Frame RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="stdFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
-        <button type="button" class="scan-nfc-btn" data-target="stdFrameIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdFrameIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="stdFrameIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Write ID to tag">✏️</button>
       </div>
       <label>Last Calibration</label>
       <input type="date" id="stdFrameLastCalibrationInput">
@@ -380,9 +388,9 @@
       <label>Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="stdMaskIdInput" placeholder="Tap 📡 to scan the mask's tag">
-        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Write ID to tag">✏️</button>
       </div>
       <label>EXP / Last Inspected</label>
       <input type="date" id="stdMaskExpDateInput">
@@ -774,8 +782,11 @@ function openModal(id) {
   document.getElementById('scbaLastHydroInput').value = existing?.scbaLastHydro || '';
   document.getElementById('scbaPressureInput').value = existing?.scbaPressure || '';
   document.getElementById('scbaLMaskIdInput').value = existing?.scbaLMaskId || '';
+  document.getElementById('scbaLMaskExpDateInput').value = existing?.scbaLMaskExpDate || '';
   document.getElementById('scbaMMaskIdInput').value = existing?.scbaMMaskId || '';
+  document.getElementById('scbaMMaskExpDateInput').value = existing?.scbaMMaskExpDate || '';
   document.getElementById('scbaSMaskIdInput').value = existing?.scbaSMaskId || '';
+  document.getElementById('scbaSMaskExpDateInput').value = existing?.scbaSMaskExpDate || '';
   document.getElementById('scbaInspectionInput').value = existing?.scbaInspection || '';
   document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
   document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
@@ -834,8 +845,11 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     scbaLastHydro: document.getElementById('scbaLastHydroInput').value,
     scbaPressure: document.getElementById('scbaPressureInput').value,
     scbaLMaskId: document.getElementById('scbaLMaskIdInput').value.trim(),
+    scbaLMaskExpDate: document.getElementById('scbaLMaskExpDateInput').value,
     scbaMMaskId: document.getElementById('scbaMMaskIdInput').value.trim(),
+    scbaMMaskExpDate: document.getElementById('scbaMMaskExpDateInput').value,
     scbaSMaskId: document.getElementById('scbaSMaskIdInput').value.trim(),
+    scbaSMaskExpDate: document.getElementById('scbaSMaskExpDateInput').value,
     scbaInspection: document.getElementById('scbaInspectionInput').value,
     scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
     scbaComments: document.getElementById('scbaCommentsInput').value.trim(),
@@ -897,7 +911,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
     'SCBA Frame RFID', 'SCBA Last Calibration',
     'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
-    'SCBA L Mask RFID', 'SCBA M Mask RFID', 'SCBA S Mask RFID',
+    'SCBA L Mask RFID', 'SCBA L Mask Date', 'SCBA M Mask RFID', 'SCBA M Mask Date', 'SCBA S Mask RFID', 'SCBA S Mask Date',
     'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
     'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Comments',
     'Standalone Frame RFID', 'Standalone Frame Last Calibration', 'Standalone Frame Comments',
@@ -913,7 +927,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '',
       i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
-      i.scbaLMaskId || '', i.scbaMMaskId || '', i.scbaSMaskId || '',
+      i.scbaLMaskId || '', i.scbaLMaskExpDate || '', i.scbaMMaskId || '', i.scbaMMaskExpDate || '', i.scbaSMaskId || '', i.scbaSMaskExpDate || '',
       i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
       i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylComments || '',
       i.stdFrameId || '', i.stdFrameLastCalibration || '', i.stdFrameComments || '',
@@ -1141,26 +1155,33 @@ scanNfcEntryBtn.addEventListener('click', () => {
 // ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
 document.addEventListener('click', (e) => {
   const readBtn = e.target.closest('.scan-nfc-btn');
-  if (readBtn) scanNfcIntoField(readBtn.dataset.target);
+  if (readBtn) scanNfcIntoField(readBtn.dataset.target, readBtn.dataset.dateTarget || null);
   const writeBtn = e.target.closest('.write-nfc-btn');
-  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target);
+  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target, writeBtn.dataset.dateTarget || null);
 });
 
-function readTextRecord(message) {
-  if (!message || !message.records) return null;
+function readTextRecords(message) {
+  // Returns every decoded text record on the tag, in order. First is the ID, second (if present) is a companion date.
+  if (!message || !message.records) return [];
+  const out = [];
   for (const record of message.records) {
     if (record.recordType === 'text') {
       try {
         const decoder = new TextDecoder(record.encoding || 'utf-8');
         const text = decoder.decode(record.data).trim();
-        if (text) return text;
+        if (text) out.push(text);
       } catch (e) { /* ignore malformed record */ }
     }
   }
-  return null;
+  return out;
 }
+function readTextRecord(message) {
+  const all = readTextRecords(message);
+  return all.length ? all[0] : null;
+}
+function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
-async function scanNfcIntoField(targetInputId) {
+async function scanNfcIntoField(targetInputId, dateTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — enter it manually');
     return;
@@ -1177,13 +1198,19 @@ async function scanNfcIntoField(targetInputId) {
       if (done) return;
       done = true;
       clearTimeout(timeoutId);
-      const writtenId = readTextRecord(event.message);
+      const textRecords = readTextRecords(event.message);
+      const writtenId = textRecords[0] || null;
+      const writtenDate = textRecords[1] && isIsoDate(textRecords[1]) ? textRecords[1] : null;
       const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
       if (navigator.vibrate) navigator.vibrate(60);
       const input = document.getElementById(targetInputId);
       if (input) input.value = value;
-      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      if (dateTargetId && writtenDate) {
+        const dateInput = document.getElementById(dateTargetId);
+        if (dateInput) dateInput.value = writtenDate;
+      }
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : ''));
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
     });
   } catch (err) {
@@ -1192,7 +1219,7 @@ async function scanNfcIntoField(targetInputId) {
   }
 }
 
-async function writeNfcIdToTag(targetInputId) {
+async function writeNfcIdToTag(targetInputId, dateTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser');
     return;
@@ -1203,19 +1230,35 @@ async function writeNfcIdToTag(targetInputId) {
   const trimmed = (idValue || '').trim();
   if (!trimmed) return;
 
+  let dateValue = '';
+  if (dateTargetId) {
+    const dateInput = document.getElementById(dateTargetId);
+    const currentDate = dateInput ? dateInput.value : '';
+    const entered = prompt('Calibration/hydro date to write onto the tag (YYYY-MM-DD), leave blank to skip:', currentDate || '');
+    const trimmedDate = (entered || '').trim();
+    if (trimmedDate && isIsoDate(trimmedDate)) dateValue = trimmedDate;
+    else if (trimmedDate) showToast('Date not in YYYY-MM-DD format — skipping date, writing ID only');
+  }
+
   showToast('Hold the blank/existing tag to the back of your phone to write…');
   let done = false;
   const timeoutId = setTimeout(() => {
     if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
   }, 10000);
   try {
+    const records = [{ recordType: 'text', data: trimmed }];
+    if (dateValue) records.push({ recordType: 'text', data: dateValue });
     const writer = new NDEFReader();
-    await writer.write({ records: [{ recordType: 'text', data: trimmed }] });
+    await writer.write({ records });
     done = true;
     clearTimeout(timeoutId);
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
     if (input) input.value = trimmed;
-    showToast('Wrote "' + trimmed + '" to tag');
+    if (dateValue && dateTargetId) {
+      const dateInput = document.getElementById(dateTargetId);
+      if (dateInput) dateInput.value = dateValue;
+    }
+    showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + ' to tag');
   } catch (err) {
     clearTimeout(timeoutId);
     if (!done) {
