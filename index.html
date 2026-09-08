@@ -194,6 +194,7 @@
   </div>
   <div class="scan-hint" id="scanHint">Scan the collection point's barcode or RFID tag to find or add its record</div>
   <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
+  <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
 </div>
 
 <div class="toolbar">
@@ -359,6 +360,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="historyLookupOverlay">
+  <div class="modal">
+    <h2>Component Movement History</h2>
+    <label>Frame / Cylinder / Mask RFID Tag</label>
+    <div class="input-with-scan">
+      <input type="text" id="historyLookupInput" placeholder="Type, or scan with the NFC button">
+      <button type="button" class="scan-nfc-btn" id="historyLookupNfcBtn" title="Scan NFC">📡</button>
+    </div>
+    <div id="historyLookupResults" style="margin-top:16px;"></div>
+    <div class="modal-buttons">
+      <button id="historyLookupCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -408,6 +424,10 @@ async function loadItems() {
   try {
     const res = await fetch('seed-data.json');
     items = expandSeedData(await res.json());
+    Object.entries(items).forEach(([id, item]) => {
+      recordComponentLinksForItem(item, id, item.updatedAt || Date.now());
+    });
+    saveComponentHistory();
   } catch (e) {
     items = {};
   }
@@ -420,6 +440,39 @@ function loadUnits() {
 }
 function saveUnits() { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function ensureUnit(name) { if (name && !units.includes(name)) { units.push(name); saveUnits(); } }
+
+// ---------- Component history (per-RFID-tag movement across collection points) ----------
+const COMPONENT_HISTORY_KEY = 'safety_tracker_component_history_v1';
+let componentHistory = {};
+function loadComponentHistory() {
+  try { const raw = localStorage.getItem(COMPONENT_HISTORY_KEY); componentHistory = raw ? JSON.parse(raw) : {}; }
+  catch (e) { componentHistory = {}; }
+}
+function saveComponentHistory() { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); }
+
+function recordComponentLink(componentId, collectionPointId, role, timestamp) {
+  if (!componentId) return;
+  const key = String(componentId).trim();
+  if (!key) return;
+  if (!componentHistory[key]) componentHistory[key] = [];
+  const entries = componentHistory[key];
+  const last = entries[entries.length - 1];
+  // Skip if this is exactly the same collection point + role as last time (nothing actually moved)
+  if (last && last.collectionPointId === collectionPointId && last.role === role) return;
+  entries.push({ collectionPointId, role, timestamp });
+}
+
+function recordComponentLinksForItem(item, collectionPointId, timestamp) {
+  if (item.type === 'SCBA Station') {
+    recordComponentLink(item.scbaFrameId, collectionPointId, 'Frame', timestamp);
+    recordComponentLink(item.scbaCylinderId, collectionPointId, 'Cylinder', timestamp);
+    recordComponentLink(item.scbaLMaskId, collectionPointId, 'L Mask', timestamp);
+    recordComponentLink(item.scbaMMaskId, collectionPointId, 'M Mask', timestamp);
+    recordComponentLink(item.scbaSMaskId, collectionPointId, 'S Mask', timestamp);
+  } else if (item.type === 'SCBA Cylinder') {
+    recordComponentLink(item.stdCylId, collectionPointId, 'Cylinder', timestamp);
+  }
+}
 
 // ---------- UI helpers ----------
 function showToast(msg) {
@@ -732,6 +785,8 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
   history.push({ location: itemDisplayName(draft, currentId), result: itemInspectionResult(draft), timestamp: now });
 
   items[currentId] = { ...draft, history, updatedAt: now, createdAt: existing?.createdAt || now };
+  recordComponentLinksForItem(draft, currentId, now);
+  saveComponentHistory();
   saveItems();
   populateFilters();
   renderList();
@@ -886,6 +941,49 @@ document.getElementById('manualEntryLink').addEventListener('click', () => {
   if (trimmed) openModal(trimmed);
 });
 
+// ---------- Component movement history lookup ----------
+function renderComponentHistory(componentId) {
+  const resultsEl = document.getElementById('historyLookupResults');
+  const key = String(componentId).trim();
+  const entries = componentHistory[key];
+  if (!key) { resultsEl.innerHTML = ''; return; }
+  if (!entries || !entries.length) {
+    resultsEl.innerHTML = '<div class="empty-state" style="padding:16px 0;">No recorded history for "' + escapeHtml(key) + '"</div>';
+    return;
+  }
+  resultsEl.innerHTML = entries.slice().reverse().map(e => {
+    const cp = items[e.collectionPointId];
+    const cpName = cp ? itemDisplayName(cp, e.collectionPointId) : e.collectionPointId;
+    const cpUnit = cp ? cp.unit : '';
+    return `
+      <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+        <div style="display:flex;justify-content:space-between;width:100%;">
+          <span class="hist-loc">${escapeHtml(e.role)} at ${escapeHtml(cpName)}</span>
+          <span>${new Date(e.timestamp).toLocaleDateString()}</span>
+        </div>
+        ${cpUnit ? `<div style="font-size:11px;color:var(--text-dim);">${escapeHtml(cpUnit)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+document.getElementById('historyLookupInput').addEventListener('input', (e) => {
+  renderComponentHistory(e.target.value);
+});
+document.getElementById('componentHistoryLink').addEventListener('click', () => {
+  document.getElementById('historyLookupInput').value = '';
+  document.getElementById('historyLookupResults').innerHTML = '';
+  document.getElementById('historyLookupOverlay').classList.add('show');
+});
+document.getElementById('historyLookupCloseBtn').addEventListener('click', () => {
+  document.getElementById('historyLookupOverlay').classList.remove('show');
+});
+document.getElementById('historyLookupOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'historyLookupOverlay') document.getElementById('historyLookupOverlay').classList.remove('show');
+});
+document.getElementById('historyLookupNfcBtn').addEventListener('click', () => {
+  scanNfcIntoField('historyLookupInput');
+});
+
 // ---------- NFC entry (alternate way to find/add a collection point) ----------
 const scanNfcEntryBtn = document.getElementById('scanNfcEntryBtn');
 let nfcEntryScanning = false;
@@ -978,6 +1076,7 @@ async function scanNfcIntoField(targetInputId) {
       const input = document.getElementById(targetInputId);
       if (input) input.value = value;
       showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
     });
   } catch (err) {
     clearTimeout(timeoutId);
@@ -1024,6 +1123,7 @@ if (!window.isSecureContext) {
 }
 (async function init() {
   loadUnits();
+  loadComponentHistory();
   await loadItems();
   populateFilters();
   renderList();
