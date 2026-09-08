@@ -121,13 +121,14 @@
 
   .input-with-scan { display: flex; gap: 6px; align-items: stretch; }
   .input-with-scan input { flex: 1; }
-  .scan-btn, .scan-nfc-btn, .write-nfc-btn, .scan-cam-btn {
+  .scan-btn, .scan-nfc-btn, .write-nfc-btn, .scan-cam-btn, .write-date-btn {
     flex: 0 0 auto; width: 42px; border-radius: 8px; border: 1px solid var(--card-border);
     background: #0f172a; font-size: 18px; cursor: pointer; display: flex;
     align-items: center; justify-content: center;
   }
   .scan-btn { color: var(--accent); }
   .scan-cam-btn { color: #34d399; }
+  .write-date-btn { color: #f472b6; }
   .scan-nfc-btn { color: #fbbf24; }
   .write-nfc-btn { color: #a78bfa; }
   .subsection-label {
@@ -276,6 +277,7 @@
         <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaFrameIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Update date only">📅</button>
       </div>
       <label>Last Calibration</label>
       <input type="date" id="scbaLastCalibrationInput">
@@ -287,6 +289,7 @@
         <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaCylinderIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Update date only">📅</button>
       </div>
       <div class="field-row">
         <div>
@@ -306,6 +309,7 @@
         <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaLMaskIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Update date only">📅</button>
       </div>
       <label>L Mask Calibration/EXP Date</label>
       <input type="date" id="scbaLMaskExpDateInput">
@@ -316,6 +320,7 @@
         <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaMMaskIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Update date only">📅</button>
       </div>
       <label>M Mask Calibration/EXP Date</label>
       <input type="date" id="scbaMMaskExpDateInput">
@@ -326,6 +331,7 @@
         <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="scbaSMaskIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Update date only">📅</button>
       </div>
       <label>S Mask Calibration/EXP Date</label>
       <input type="date" id="scbaSMaskExpDateInput">
@@ -349,6 +355,7 @@
         <button type="button" class="scan-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdCylIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Update date only">📅</button>
       </div>
       <div class="field-row">
         <div>
@@ -372,6 +379,7 @@
         <button type="button" class="scan-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdFrameIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Update date only">📅</button>
       </div>
       <label>Last Calibration</label>
       <input type="date" id="stdFrameLastCalibrationInput">
@@ -391,6 +399,7 @@
         <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Update date only">📅</button>
       </div>
       <label>EXP / Last Inspected</label>
       <input type="date" id="stdMaskExpDateInput">
@@ -1158,6 +1167,8 @@ document.addEventListener('click', (e) => {
   if (readBtn) scanNfcIntoField(readBtn.dataset.target, readBtn.dataset.dateTarget || null);
   const writeBtn = e.target.closest('.write-nfc-btn');
   if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target, writeBtn.dataset.dateTarget || null);
+  const dateBtn = e.target.closest('.write-date-btn');
+  if (dateBtn) writeDateOnlyToTag(dateBtn.dataset.target, dateBtn.dataset.dateTarget);
 });
 
 function readTextRecords(message) {
@@ -1259,6 +1270,46 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
       if (dateInput) dateInput.value = dateValue;
     }
     showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + ' to tag');
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (!done) {
+      done = true;
+      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
+    }
+  }
+}
+
+async function writeDateOnlyToTag(targetInputId, dateTargetId) {
+  if (!('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser');
+    return;
+  }
+  const input = document.getElementById(targetInputId);
+  const currentId = input ? input.value.trim() : '';
+  if (!currentId) {
+    showToast('No ID linked here yet — use the ✏️ button first to write an ID + date together');
+    return;
+  }
+  const dateInput = document.getElementById(dateTargetId);
+  const currentDate = dateInput ? dateInput.value : '';
+  const entered = prompt('New date to write onto the tag (YYYY-MM-DD), keeping ID "' + currentId + '":', currentDate || '');
+  const trimmedDate = (entered || '').trim();
+  if (!trimmedDate) return;
+  if (!isIsoDate(trimmedDate)) { showToast('Date must be in YYYY-MM-DD format'); return; }
+
+  showToast('Hold the tag to the back of your phone to update the date…');
+  let done = false;
+  const timeoutId = setTimeout(() => {
+    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+  }, 10000);
+  try {
+    const writer = new NDEFReader();
+    await writer.write({ records: [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }] });
+    done = true;
+    clearTimeout(timeoutId);
+    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    if (dateInput) dateInput.value = trimmedDate;
+    showToast('Updated date to ' + trimmedDate + ' (ID "' + currentId + '" unchanged)');
   } catch (err) {
     clearTimeout(timeoutId);
     if (!done) {
