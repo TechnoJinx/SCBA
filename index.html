@@ -197,6 +197,7 @@
   <div class="scan-hint" id="scanHint">Scan the collection point's barcode or RFID tag to find or add its record</div>
   <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
   <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
+  <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
 </div>
 
 <div class="toolbar">
@@ -684,6 +685,7 @@ function renderList() {
         <div class="badges">
           ${item.type ? `<span class="badge badge-type">${escapeHtml(item.type)}</span>` : ''}
           ${item.unit ? `<span class="badge badge-unit">${escapeHtml(item.unit)}</span>` : ''}
+          ${id.startsWith('UNASSIGNED-') ? '<span class="badge" style="background:#7c3aed;color:#fff;">No location</span>' : ''}
           ${resultBadge}
         </div>
         <div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>
@@ -766,7 +768,9 @@ function openModal(id) {
   currentId = id;
   const existing = items[id];
   document.getElementById('modalTitle').textContent = existing ? 'Edit Item' : 'New Item';
-  document.getElementById('modalTagId').textContent = 'ID: ' + id;
+  document.getElementById('modalTagId').textContent = id.startsWith('UNASSIGNED-')
+    ? 'Not yet at a location — link its RFID/barcode below when you have it'
+    : 'ID: ' + id;
 
   const defaultType = existing?.type || 'Extinguisher';
   setType(defaultType);
@@ -1070,6 +1074,11 @@ document.getElementById('manualEntryLink').addEventListener('click', () => {
   const val = prompt('Enter the collection point barcode or NFC ID manually:');
   const trimmed = (val || '').trim();
   if (trimmed) openModal(trimmed);
+});
+
+document.getElementById('addUnassignedLink').addEventListener('click', () => {
+  const id = 'UNASSIGNED-' + Date.now().toString(36).toUpperCase();
+  openModal(id);
 });
 
 // ---------- Component movement history lookup ----------
