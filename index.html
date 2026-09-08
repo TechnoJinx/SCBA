@@ -222,6 +222,8 @@
       <button type="button" data-type="Emergency Light">Emerg. Light</button>
       <button type="button" data-type="SCBA Station">SCBA Station</button>
       <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
+      <button type="button" data-type="SCBA Frame">SCBA Frame</button>
+      <button type="button" data-type="SCBA Mask">SCBA Mask</button>
     </div>
 
     <label>Unit</label>
@@ -347,6 +349,38 @@
       <textarea id="stdCylCommentsInput" rows="2"></textarea>
     </div>
 
+    <!-- SCBA Frame (standalone — loose frame, not currently in a station) -->
+    <div class="type-fields" id="fields-SCBA Frame">
+      <label>Frame RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdFrameIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="stdFrameIdInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>Last Calibration</label>
+      <input type="date" id="stdFrameLastCalibrationInput">
+      <label>Comments</label>
+      <textarea id="stdFrameCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Mask (standalone — loose mask, not currently in a station) -->
+    <div class="type-fields" id="fields-SCBA Mask">
+      <label>Size</label>
+      <select id="stdMaskSizeInput">
+        <option value="Large">Large</option><option value="Medium">Medium</option><option value="Small">Small</option>
+      </select>
+      <label>Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdMaskIdInput" placeholder="Tap 📡 to scan the mask's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" title="Read tag">📡</button>
+        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>EXP / Last Inspected</label>
+      <input type="date" id="stdMaskExpDateInput">
+      <label>Comments</label>
+      <textarea id="stdMaskCommentsInput" rows="2"></textarea>
+    </div>
+
     <div class="history-section" id="historySection" style="display:none;">
       <button type="button" class="history-toggle" id="historyToggle">Show scan history ▾</button>
       <div class="history-list" id="historyList"></div>
@@ -382,7 +416,7 @@ const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station', 'SCBA Cylinder'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
 let items = {};
 let units = [];
@@ -471,6 +505,10 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
     recordComponentLink(item.scbaSMaskId, collectionPointId, 'S Mask', timestamp);
   } else if (item.type === 'SCBA Cylinder') {
     recordComponentLink(item.stdCylId, collectionPointId, 'Cylinder', timestamp);
+  } else if (item.type === 'SCBA Frame') {
+    recordComponentLink(item.stdFrameId, collectionPointId, 'Frame', timestamp);
+  } else if (item.type === 'SCBA Mask') {
+    recordComponentLink(item.stdMaskId, collectionPointId, (item.stdMaskSize || '') + ' Mask', timestamp);
   }
 }
 
@@ -506,6 +544,8 @@ function itemDisplayName(item, id) {
   if (item.type === 'Emergency Light') return item.lightLocation || id;
   if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
   if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
+  if (item.type === 'SCBA Frame') return item.stdFrameId || id;
+  if (item.type === 'SCBA Mask') return (item.stdMaskSize ? item.stdMaskSize + ' Mask ' : 'Mask ') + (item.stdMaskId || id);
   return id;
 }
 function itemInspectionResult(item) {
@@ -534,6 +574,14 @@ function itemSummaryLine(item) {
   }
   if (item.type === 'SCBA Cylinder') {
     const p = []; if (item.stdCylLastHydro) p.push('Hydro ' + item.stdCylLastHydro); if (item.stdCylPressure) p.push(item.stdCylPressure + ' psi');
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Frame') {
+    const p = []; if (item.stdFrameLastCalibration) p.push('Cal ' + item.stdFrameLastCalibration);
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Mask') {
+    const p = []; if (item.stdMaskExpDate) p.push('Exp ' + item.stdMaskExpDate);
     return p.join(' · ');
   }
   return '';
@@ -727,6 +775,15 @@ function openModal(id) {
   document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
   document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
 
+  document.getElementById('stdFrameIdInput').value = existing?.stdFrameId || '';
+  document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || '';
+  document.getElementById('stdFrameCommentsInput').value = existing?.stdFrameComments || '';
+
+  document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || 'Large';
+  document.getElementById('stdMaskIdInput').value = existing?.stdMaskId || '';
+  document.getElementById('stdMaskExpDateInput').value = existing?.stdMaskExpDate || '';
+  document.getElementById('stdMaskCommentsInput').value = existing?.stdMaskComments || '';
+
   renderHistory(existing);
   document.getElementById('deleteItemBtn').style.display = existing ? 'block' : 'none';
   document.getElementById('modalOverlay').classList.add('show');
@@ -776,7 +833,16 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     stdCylId: document.getElementById('stdCylIdInput').value.trim(),
     stdCylLastHydro: document.getElementById('stdCylLastHydroInput').value,
     stdCylPressure: document.getElementById('stdCylPressureInput').value,
-    stdCylComments: document.getElementById('stdCylCommentsInput').value.trim()
+    stdCylComments: document.getElementById('stdCylCommentsInput').value.trim(),
+
+    stdFrameId: document.getElementById('stdFrameIdInput').value.trim(),
+    stdFrameLastCalibration: document.getElementById('stdFrameLastCalibrationInput').value,
+    stdFrameComments: document.getElementById('stdFrameCommentsInput').value.trim(),
+
+    stdMaskSize: document.getElementById('stdMaskSizeInput').value,
+    stdMaskId: document.getElementById('stdMaskIdInput').value.trim(),
+    stdMaskExpDate: document.getElementById('stdMaskExpDateInput').value,
+    stdMaskComments: document.getElementById('stdMaskCommentsInput').value.trim()
   };
 
   const now = Date.now();
@@ -824,6 +890,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'SCBA L Mask RFID', 'SCBA M Mask RFID', 'SCBA S Mask RFID',
     'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
     'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Comments',
+    'Standalone Frame RFID', 'Standalone Frame Last Calibration', 'Standalone Frame Comments',
+    'Standalone Mask Size', 'Standalone Mask RFID', 'Standalone Mask EXP Date', 'Standalone Mask Comments',
     'Scan Count', 'Created', 'Last Scanned'
   ];
   const rows = [header];
@@ -838,6 +906,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.scbaLMaskId || '', i.scbaMMaskId || '', i.scbaSMaskId || '',
       i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
       i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylComments || '',
+      i.stdFrameId || '', i.stdFrameLastCalibration || '', i.stdFrameComments || '',
+      i.stdMaskSize || '', i.stdMaskId || '', i.stdMaskExpDate || '', i.stdMaskComments || '',
       (i.history || []).length,
       i.createdAt ? new Date(i.createdAt).toISOString() : '',
       i.updatedAt ? new Date(i.updatedAt).toISOString() : ''
