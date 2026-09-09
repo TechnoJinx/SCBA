@@ -230,6 +230,8 @@
     <div class="type-toggle" id="typeToggle">
       <button type="button" data-type="Extinguisher">Extinguisher</button>
       <button type="button" data-type="Emergency Light">Emerg. Light</button>
+      <button type="button" data-type="Eyewash Station">Eyewash</button>
+      <button type="button" data-type="Spill Kit">Spill Kit</button>
       <button type="button" data-type="SCBA Station">SCBA Station</button>
       <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
       <button type="button" data-type="SCBA Frame">SCBA Frame</button>
@@ -269,6 +271,40 @@
       <input type="date" id="lightLastInspectedInput">
       <label>Comments</label>
       <textarea id="lightCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Eyewash Station fields -->
+    <div class="type-fields" id="fields-Eyewash Station">
+      <label>Location</label>
+      <input type="text" id="eyewashLocationInput" placeholder="e.g. NFH, Paint Booth">
+      <label>General Inspection</label>
+      <select id="eyewashInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Service</label>
+      <input type="date" id="eyewashLastServiceInput">
+      <label>Last Inspected</label>
+      <input type="date" id="eyewashLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="eyewashCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Spill Kit fields -->
+    <div class="type-fields" id="fields-Spill Kit">
+      <label>Location</label>
+      <input type="text" id="spillLocationInput" placeholder="e.g. NW corner Blaine parking lot">
+      <label>Car Seal Intact</label>
+      <select id="spillSealInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Missing Items</label>
+      <input type="text" id="spillMissingItemsInput" placeholder="e.g. none">
+      <label>Box Condition</label>
+      <input type="text" id="spillBoxConditionInput" placeholder="e.g. Good">
+      <label>Last Inspected</label>
+      <input type="date" id="spillLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="spillCommentsInput" rows="2"></textarea>
     </div>
 
     <!-- SCBA Station (combined) fields -->
@@ -469,7 +505,7 @@ const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
 let items = {};
 let units = [];
@@ -497,6 +533,14 @@ function expandSeedData(compact) {
   (compact.stdcyl || []).forEach(([id, unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments]) => {
     out[id] = { type: 'SCBA Cylinder', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
       history: [{ location: stdCylId || id, result: '', timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.eyewash || []).forEach(([id, eyewashLocation, eyewashInspection, eyewashLastService, eyewashLastInspected, eyewashComments]) => {
+    out[id] = { type: 'Eyewash Station', unit: '', eyewashLocation, eyewashInspection, eyewashLastService, eyewashLastInspected, eyewashComments,
+      history: [{ location: eyewashLocation, result: eyewashInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.spillkit || []).forEach(([id, spillLocation, spillSeal, spillMissingItems, spillBoxCondition, spillLastInspected, spillComments]) => {
+    out[id] = { type: 'Spill Kit', unit: '', spillLocation, spillSeal, spillMissingItems, spillBoxCondition, spillLastInspected, spillComments,
+      history: [{ location: spillLocation, result: spillSeal, timestamp: now }], createdAt: now, updatedAt: now };
   });
   return out;
 }
@@ -595,6 +639,8 @@ function timeAgo(ts) {
 function itemDisplayName(item, id) {
   if (item.type === 'Extinguisher') return item.extLocation || id;
   if (item.type === 'Emergency Light') return item.lightLocation || id;
+  if (item.type === 'Eyewash Station') return item.eyewashLocation || id;
+  if (item.type === 'Spill Kit') return item.spillLocation || id;
   if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
   if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
   if (item.type === 'SCBA Frame') return item.stdFrameId || id;
@@ -604,6 +650,8 @@ function itemDisplayName(item, id) {
 function itemInspectionResult(item) {
   if (item.type === 'Extinguisher') return item.extInspection || '';
   if (item.type === 'Emergency Light') return item.lightInspection || '';
+  if (item.type === 'Eyewash Station') return item.eyewashInspection || '';
+  if (item.type === 'Spill Kit') return item.spillSeal || '';
   if (item.type === 'SCBA Station') return item.scbaInspection || '';
   return '';
 }
@@ -614,6 +662,14 @@ function itemSummaryLine(item) {
   }
   if (item.type === 'Emergency Light') {
     const p = []; if (item.lightLastInspected) p.push('Inspected ' + item.lightLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'Eyewash Station') {
+    const p = []; if (item.eyewashLastService) p.push('Serviced ' + item.eyewashLastService); if (item.eyewashLastInspected) p.push('Inspected ' + item.eyewashLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'Spill Kit') {
+    const p = []; if (item.spillBoxCondition) p.push(item.spillBoxCondition); if (item.spillMissingItems && item.spillMissingItems.toLowerCase() !== 'none') p.push('Missing: ' + item.spillMissingItems);
     return p.join(' · ');
   }
   if (item.type === 'SCBA Station') {
@@ -799,6 +855,8 @@ document.getElementById('historyToggle').addEventListener('click', () => {
 const VIEW_FIELDS = {
   'Extinguisher': [['Location','extLocation'],['Weight & Agent','extWeightAgent'],['Inspection','extInspection'],['Last Inspected','extLastInspected'],['Comments','extComments']],
   'Emergency Light': [['Location','lightLocation'],['Inspection','lightInspection'],['Last Inspected','lightLastInspected'],['Comments','lightComments']],
+  'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
+  'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
   'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
     ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],
     ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],
@@ -898,6 +956,19 @@ function openModal(id) {
   document.getElementById('lightLastInspectedInput').value = existing?.lightLastInspected || '';
   document.getElementById('lightCommentsInput').value = existing?.lightComments || '';
 
+  document.getElementById('eyewashLocationInput').value = existing?.eyewashLocation || '';
+  document.getElementById('eyewashInspectionInput').value = existing?.eyewashInspection || '';
+  document.getElementById('eyewashLastServiceInput').value = existing?.eyewashLastService || '';
+  document.getElementById('eyewashLastInspectedInput').value = existing?.eyewashLastInspected || '';
+  document.getElementById('eyewashCommentsInput').value = existing?.eyewashComments || '';
+
+  document.getElementById('spillLocationInput').value = existing?.spillLocation || '';
+  document.getElementById('spillSealInput').value = existing?.spillSeal || '';
+  document.getElementById('spillMissingItemsInput').value = existing?.spillMissingItems || '';
+  document.getElementById('spillBoxConditionInput').value = existing?.spillBoxCondition || '';
+  document.getElementById('spillLastInspectedInput').value = existing?.spillLastInspected || '';
+  document.getElementById('spillCommentsInput').value = existing?.spillComments || '';
+
   document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
   document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
   document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
@@ -960,6 +1031,19 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     lightInspection: document.getElementById('lightInspectionInput').value,
     lightLastInspected: document.getElementById('lightLastInspectedInput').value,
     lightComments: document.getElementById('lightCommentsInput').value.trim(),
+
+    eyewashLocation: document.getElementById('eyewashLocationInput').value.trim(),
+    eyewashInspection: document.getElementById('eyewashInspectionInput').value,
+    eyewashLastService: document.getElementById('eyewashLastServiceInput').value,
+    eyewashLastInspected: document.getElementById('eyewashLastInspectedInput').value,
+    eyewashComments: document.getElementById('eyewashCommentsInput').value.trim(),
+
+    spillLocation: document.getElementById('spillLocationInput').value.trim(),
+    spillSeal: document.getElementById('spillSealInput').value,
+    spillMissingItems: document.getElementById('spillMissingItemsInput').value.trim(),
+    spillBoxCondition: document.getElementById('spillBoxConditionInput').value.trim(),
+    spillLastInspected: document.getElementById('spillLastInspectedInput').value,
+    spillComments: document.getElementById('spillCommentsInput').value.trim(),
 
     scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
     scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
@@ -1032,6 +1116,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'Collection Point Barcode', 'Type', 'Unit',
     'Ext Location', 'Ext Weight & Agent', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
+    'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
+    'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
     'SCBA Frame RFID', 'SCBA Last Calibration',
     'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
@@ -1048,6 +1134,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       id, i.type || '', i.unit || '',
       i.extLocation || '', i.extWeightAgent || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
+      i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
+      i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '',
       i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
