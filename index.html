@@ -352,6 +352,18 @@
       <label>S Mask Calibration/EXP Date</label>
       <input type="date" id="maskCabSExpDateInput">
 
+      <label>SAR Number</label>
+      <div class="input-with-scan">
+        <input type="text" id="maskCabSarNumberInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="maskCabSarNumberInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="maskCabSarNumberInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="maskCabSarNumberInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>Mask Box</label>
+      <select id="maskCabBoxInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+
       <label>General Inspection</label>
       <select id="maskCabInspectionInput">
         <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
@@ -618,6 +630,14 @@ function expandSeedData(compact) {
     out[id] = { type: 'Spill Kit', unit: '', spillLocation, spillSeal, spillMissingItems, spillBoxCondition, spillLastInspected, spillComments,
       history: [{ location: spillLocation, result: spillSeal, timestamp: now }], createdAt: now, updatedAt: now };
   });
+  (compact.maskcab || []).forEach(([id, unit, maskCabLocation, maskCabCondition, maskCabLId, maskCabLExpDate,
+      maskCabMId, maskCabMExpDate, maskCabSId, maskCabSExpDate, maskCabSarNumber, maskCabBox,
+      maskCabInspection, maskCabLastInspected, maskCabComments]) => {
+    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, maskCabLId, maskCabLExpDate,
+      maskCabMId, maskCabMExpDate, maskCabSId, maskCabSExpDate, maskCabSarNumber, maskCabBox,
+      maskCabInspection, maskCabLastInspected, maskCabComments,
+      history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now }], createdAt: now, updatedAt: now };
+  });
   return out;
 }
 
@@ -693,6 +713,7 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
     recordComponentLink(item.maskCabLId, collectionPointId, 'L Mask', timestamp);
     recordComponentLink(item.maskCabMId, collectionPointId, 'M Mask', timestamp);
     recordComponentLink(item.maskCabSId, collectionPointId, 'S Mask', timestamp);
+    recordComponentLink(item.maskCabSarNumber, collectionPointId, 'SAR', timestamp);
   }
 }
 
@@ -823,7 +844,7 @@ function findMatchingId(value) {
         return id;
       }
     } else if (item.type === 'Mask Cabinet') {
-      if ([item.maskCabLId, item.maskCabMId, item.maskCabSId]
+      if ([item.maskCabLId, item.maskCabMId, item.maskCabSId, item.maskCabSarNumber]
         .some(f => f && String(f).trim().toLowerCase() === v)) {
         return id;
       }
@@ -837,7 +858,7 @@ function itemSearchHay(item, id) {
   if (item.type === 'SCBA Station') {
     parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
   } else if (item.type === 'Mask Cabinet') {
-    parts.push(item.maskCabLId, item.maskCabMId, item.maskCabSId);
+    parts.push(item.maskCabLId, item.maskCabMId, item.maskCabSId, item.maskCabSarNumber);
   }
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
@@ -970,6 +991,7 @@ const VIEW_FIELDS = {
     ['L Mask RFID','maskCabLId'],['L Mask Date','maskCabLExpDate'],
     ['M Mask RFID','maskCabMId'],['M Mask Date','maskCabMExpDate'],
     ['S Mask RFID','maskCabSId'],['S Mask Date','maskCabSExpDate'],
+    ['SAR Number','maskCabSarNumber'],['Mask Box','maskCabBox'],
     ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
   'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
   'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
@@ -1092,6 +1114,8 @@ function openModal(id) {
   document.getElementById('maskCabMExpDateInput').value = existing?.maskCabMExpDate || '';
   document.getElementById('maskCabSIdInput').value = existing?.maskCabSId || '';
   document.getElementById('maskCabSExpDateInput').value = existing?.maskCabSExpDate || '';
+  document.getElementById('maskCabSarNumberInput').value = existing?.maskCabSarNumber || '';
+  document.getElementById('maskCabBoxInput').value = existing?.maskCabBox || '';
   document.getElementById('maskCabInspectionInput').value = existing?.maskCabInspection || '';
   document.getElementById('maskCabLastInspectedInput').value = existing?.maskCabLastInspected || '';
   document.getElementById('maskCabCommentsInput').value = existing?.maskCabComments || '';
@@ -1186,6 +1210,8 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     maskCabMExpDate: document.getElementById('maskCabMExpDateInput').value,
     maskCabSId: document.getElementById('maskCabSIdInput').value.trim(),
     maskCabSExpDate: document.getElementById('maskCabSExpDateInput').value,
+    maskCabSarNumber: document.getElementById('maskCabSarNumberInput').value.trim(),
+    maskCabBox: document.getElementById('maskCabBoxInput').value,
     maskCabInspection: document.getElementById('maskCabInspectionInput').value,
     maskCabLastInspected: document.getElementById('maskCabLastInspectedInput').value,
     maskCabComments: document.getElementById('maskCabCommentsInput').value.trim(),
@@ -1269,7 +1295,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
     'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
     'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
-    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab L Mask RFID', 'Mask Cab L Exp', 'Mask Cab M Mask RFID', 'Mask Cab M Exp', 'Mask Cab S Mask RFID', 'Mask Cab S Exp', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
+    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab L Mask RFID', 'Mask Cab L Exp', 'Mask Cab M Mask RFID', 'Mask Cab M Exp', 'Mask Cab S Mask RFID', 'Mask Cab S Exp', 'Mask Cab SAR Number', 'Mask Cab Box', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
     'SAR Location', 'SAR RFID/Barcode', 'SAR Inspection', 'SAR Last Inspected', 'SAR Comments',
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
     'SCBA Frame RFID', 'SCBA Last Calibration',
@@ -1289,7 +1315,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
       i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
       i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
-      i.maskCabLocation || '', i.maskCabCondition || '', i.maskCabLId || '', i.maskCabLExpDate || '', i.maskCabMId || '', i.maskCabMExpDate || '', i.maskCabSId || '', i.maskCabSExpDate || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
+      i.maskCabLocation || '', i.maskCabCondition || '', i.maskCabLId || '', i.maskCabLExpDate || '', i.maskCabMId || '', i.maskCabMExpDate || '', i.maskCabSId || '', i.maskCabSExpDate || '', i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
       i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '',
