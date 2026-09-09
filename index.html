@@ -1251,9 +1251,10 @@ function scanLoop() {
       const matchId = findMatchingId(value);
       if (matchId && matchId !== value) {
         showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
-      } else {
-        showToast('Barcode: ' + value);
+        openComponentHistoryFor(value);
+        return;
       }
+      showToast('Barcode: ' + value);
       openModal(matchId || value);
       return;
     }
@@ -1325,12 +1326,13 @@ function renderComponentHistory(componentId) {
     const cpName = cp ? itemDisplayName(cp, e.collectionPointId) : e.collectionPointId;
     const cpUnit = cp ? cp.unit : '';
     return `
-      <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+      <div class="history-row view-history-row" data-cp-id="${escapeAttr(e.collectionPointId)}" style="flex-direction:column;align-items:flex-start;gap:2px;cursor:${cp ? 'pointer' : 'default'};">
         <div style="display:flex;justify-content:space-between;width:100%;">
           <span class="hist-loc">${escapeHtml(e.role)} at ${escapeHtml(cpName)}</span>
           <span>${new Date(e.timestamp).toLocaleDateString()}</span>
         </div>
         ${cpUnit ? `<div style="font-size:11px;color:var(--text-dim);">${escapeHtml(cpUnit)}</div>` : ''}
+        ${cp ? '<div style="font-size:11px;color:var(--accent);">Tap to view this collection point →</div>' : ''}
       </div>
     `;
   }).join('');
@@ -1338,6 +1340,19 @@ function renderComponentHistory(componentId) {
 document.getElementById('historyLookupInput').addEventListener('input', (e) => {
   renderComponentHistory(e.target.value);
 });
+document.getElementById('historyLookupResults').addEventListener('click', (e) => {
+  const row = e.target.closest('.view-history-row');
+  if (!row) return;
+  const cpId = row.dataset.cpId;
+  if (!items[cpId]) return;
+  document.getElementById('historyLookupOverlay').classList.remove('show');
+  openView(cpId);
+});
+function openComponentHistoryFor(value) {
+  document.getElementById('historyLookupInput').value = value;
+  document.getElementById('historyLookupOverlay').classList.add('show');
+  renderComponentHistory(value);
+}
 document.getElementById('componentHistoryLink').addEventListener('click', () => {
   document.getElementById('historyLookupInput').value = '';
   document.getElementById('historyLookupResults').innerHTML = '';
@@ -1380,9 +1395,10 @@ async function startNfcEntryScanning() {
       const matchId = findMatchingId(value);
       if (matchId && matchId !== value) {
         showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
-      } else {
-        showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+        openComponentHistoryFor(value);
+        return;
       }
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
       openModal(matchId || value);
     });
   } catch (err) {
