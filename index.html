@@ -554,13 +554,16 @@ async function loadItems() {
   // First-ever load on this device — seed from the July 2026 inspection sheet.
   try {
     const res = await fetch('seed-data.json');
-    items = expandSeedData(await res.json());
+    if (!res.ok) throw new Error('seed-data.json returned HTTP ' + res.status);
+    const json = await res.json();
+    items = expandSeedData(json);
     Object.entries(items).forEach(([id, item]) => {
       recordComponentLinksForItem(item, id, item.updatedAt || Date.now());
     });
     saveComponentHistory();
   } catch (e) {
     items = {};
+    showBanner('Could not load starting data: ' + (e && e.message ? e.message : e) + '. You can still use the app — scan/add items manually — or fix seed-data.json and clear site data to retry.');
   }
   saveItems();
 }
