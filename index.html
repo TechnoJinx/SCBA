@@ -504,7 +504,7 @@
 const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
-const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'Portables', 'Spill kits', 'Incident response equipment', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
+const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
 const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
 let items = {};
@@ -568,9 +568,13 @@ async function loadItems() {
   saveItems();
 }
 function saveItems() { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+const STALE_PLACEHOLDER_UNITS = ['Portables', 'Spill kits', 'Incident response equipment'];
 function loadUnits() {
   try { const raw = localStorage.getItem(UNITS_KEY); units = raw ? JSON.parse(raw) : DEFAULT_UNITS.slice(); }
   catch (e) { units = DEFAULT_UNITS.slice(); }
+  const before = units.length;
+  units = units.filter(u => !STALE_PLACEHOLDER_UNITS.includes(u));
+  if (units.length !== before) saveUnits();
 }
 function saveUnits() { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function ensureUnit(name) { if (name && !units.includes(name)) { units.push(name); saveUnits(); } }
