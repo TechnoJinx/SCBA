@@ -131,6 +131,18 @@
   .write-date-btn { color: #f472b6; }
   .scan-nfc-btn { color: #fbbf24; }
   .write-nfc-btn { color: #a78bfa; }
+  .mask-row {
+    background: #0f172a; border: 1px solid var(--card-border); border-radius: 10px;
+    padding: 10px; margin-top: 8px;
+  }
+  .mask-row-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .mask-row-header select { width: auto; flex: 1; margin-right: 8px; }
+  .mask-row-remove {
+    flex: 0 0 auto; background: #7f1d1d; color: #fecaca; border: none; border-radius: 6px;
+    width: 30px; height: 30px; font-size: 14px; cursor: pointer;
+  }
+  .mask-row-date { margin-top: 6px; }
+  .mask-row-date label { font-size: 11px; margin-top: 4px; }
   .subsection-label {
     margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--card-border);
     font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
@@ -319,38 +331,9 @@
         <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
       </select>
 
-      <label>L Mask RFID Tag</label>
-      <div class="input-with-scan">
-        <input type="text" id="maskCabLIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Read tag">📡</button>
-        <button type="button" class="scan-cam-btn" data-target="maskCabLIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Write ID to tag">✏️</button>
-        <button type="button" class="write-date-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Update date only">📅</button>
-      </div>
-      <label>L Mask Calibration/EXP Date</label>
-      <input type="date" id="maskCabLExpDateInput">
-
-      <label>M Mask RFID Tag</label>
-      <div class="input-with-scan">
-        <input type="text" id="maskCabMIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Read tag">📡</button>
-        <button type="button" class="scan-cam-btn" data-target="maskCabMIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Write ID to tag">✏️</button>
-        <button type="button" class="write-date-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Update date only">📅</button>
-      </div>
-      <label>M Mask Calibration/EXP Date</label>
-      <input type="date" id="maskCabMExpDateInput">
-
-      <label>S Mask RFID Tag</label>
-      <div class="input-with-scan">
-        <input type="text" id="maskCabSIdInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Read tag">📡</button>
-        <button type="button" class="scan-cam-btn" data-target="maskCabSIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Write ID to tag">✏️</button>
-        <button type="button" class="write-date-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Update date only">📅</button>
-      </div>
-      <label>S Mask Calibration/EXP Date</label>
-      <input type="date" id="maskCabSExpDateInput">
+      <div class="subsection-label">Masks in this cabinet</div>
+      <div id="maskCabRowsContainer"></div>
+      <button type="button" id="maskCabAddRowBtn" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px dashed var(--card-border);background:none;color:var(--accent);font-size:13px;cursor:pointer;">+ Add Mask</button>
 
       <label>SAR Number</label>
       <div class="input-with-scan">
@@ -633,8 +616,11 @@ function expandSeedData(compact) {
   (compact.maskcab || []).forEach(([id, unit, maskCabLocation, maskCabCondition, maskCabLId, maskCabLExpDate,
       maskCabMId, maskCabMExpDate, maskCabSId, maskCabSExpDate, maskCabSarNumber, maskCabBox,
       maskCabInspection, maskCabLastInspected, maskCabComments]) => {
-    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, maskCabLId, maskCabLExpDate,
-      maskCabMId, maskCabMExpDate, maskCabSId, maskCabSExpDate, maskCabSarNumber, maskCabBox,
+    const masks = [];
+    if (maskCabLId) masks.push({ size: 'Large', id: maskCabLId, expDate: maskCabLExpDate || '' });
+    if (maskCabMId) masks.push({ size: 'Medium', id: maskCabMId, expDate: maskCabMExpDate || '' });
+    if (maskCabSId) masks.push({ size: 'Small', id: maskCabSId, expDate: maskCabSExpDate || '' });
+    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, masks, maskCabSarNumber, maskCabBox,
       maskCabInspection, maskCabLastInspected, maskCabComments,
       history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now }], createdAt: now, updatedAt: now };
   });
@@ -710,10 +696,8 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
   } else if (item.type === 'SCBA Mask') {
     recordComponentLink(item.stdMaskId, collectionPointId, (item.stdMaskSize || '') + ' Mask', timestamp);
   } else if (item.type === 'Mask Cabinet') {
-    recordComponentLink(item.maskCabLId, collectionPointId, 'L Mask', timestamp);
-    recordComponentLink(item.maskCabMId, collectionPointId, 'M Mask', timestamp);
-    recordComponentLink(item.maskCabSId, collectionPointId, 'S Mask', timestamp);
     recordComponentLink(item.maskCabSarNumber, collectionPointId, 'SAR', timestamp);
+    (item.masks || []).forEach(m => recordComponentLink(m.id, collectionPointId, (m.size || '') + ' Mask', timestamp));
   }
 }
 
@@ -786,7 +770,7 @@ function itemSummaryLine(item) {
   }
   if (item.type === 'Mask Cabinet') {
     const p = [];
-    const maskCount = [item.maskCabLId, item.maskCabMId, item.maskCabSId].filter(Boolean).length;
+    const maskCount = (item.masks || []).filter(m => m.id).length;
     if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
     if (item.maskCabLastInspected) p.push('Inspected ' + item.maskCabLastInspected);
     return p.join(' · ');
@@ -844,7 +828,8 @@ function findMatchingId(value) {
         return id;
       }
     } else if (item.type === 'Mask Cabinet') {
-      if ([item.maskCabLId, item.maskCabMId, item.maskCabSId, item.maskCabSarNumber]
+      const maskIds = (item.masks || []).map(m => m.id);
+      if ([...maskIds, item.maskCabSarNumber]
         .some(f => f && String(f).trim().toLowerCase() === v)) {
         return id;
       }
@@ -858,7 +843,7 @@ function itemSearchHay(item, id) {
   if (item.type === 'SCBA Station') {
     parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
   } else if (item.type === 'Mask Cabinet') {
-    parts.push(item.maskCabLId, item.maskCabMId, item.maskCabSId, item.maskCabSarNumber);
+    parts.push(...(item.masks || []).map(m => m.id), item.maskCabSarNumber);
   }
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
@@ -988,9 +973,6 @@ const VIEW_FIELDS = {
   'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
   'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
   'Mask Cabinet': [['Location','maskCabLocation'],['Cabinet Condition','maskCabCondition'],
-    ['L Mask RFID','maskCabLId'],['L Mask Date','maskCabLExpDate'],
-    ['M Mask RFID','maskCabMId'],['M Mask Date','maskCabMExpDate'],
-    ['S Mask RFID','maskCabSId'],['S Mask Date','maskCabSExpDate'],
     ['SAR Number','maskCabSarNumber'],['Mask Box','maskCabBox'],
     ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
   'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
@@ -1020,14 +1002,24 @@ function openView(id) {
 
   const fields = VIEW_FIELDS[item.type] || [];
   const container = document.getElementById('viewFieldsContainer');
-  container.innerHTML = fields
+  let masksHtml = '';
+  if (item.type === 'Mask Cabinet' && Array.isArray(item.masks) && item.masks.length) {
+    masksHtml = '<div class="subsection-label">Masks (' + item.masks.length + ')</div>' +
+      item.masks.filter(m => m.id).map(m => `
+        <div class="view-row">
+          <span class="view-label">${escapeHtml(m.size || '')} Mask</span>
+          <span class="view-value">${escapeHtml(m.id)}${m.expDate ? ' · ' + escapeHtml(m.expDate) : ''}</span>
+        </div>
+      `).join('');
+  }
+  container.innerHTML = masksHtml + (fields
     .filter(([, key]) => item[key])
     .map(([label, key]) => `
       <div class="view-row">
         <span class="view-label">${escapeHtml(label)}</span>
         <span class="view-value">${escapeHtml(item[key])}</span>
       </div>
-    `).join('') || '<div class="empty-state" style="padding:16px 0;">No details recorded yet</div>';
+    `).join('') || (masksHtml ? '' : '<div class="empty-state" style="padding:16px 0;">No details recorded yet</div>'));
 
   renderViewHistory(item);
   document.getElementById('viewOverlay').classList.add('show');
@@ -1070,6 +1062,73 @@ document.getElementById('viewEditBtn').addEventListener('click', () => {
   if (id) openModal(id);
 });
 
+// ---------- Mask Cabinet: dynamic mask list (any number of masks per cabinet) ----------
+let maskCabRows = []; // working array while the modal is open: [{size, id, expDate}]
+
+function maskRowFieldId(idx, field) { return 'maskRow' + idx + '_' + field; }
+
+function renderMaskCabRows() {
+  const container = document.getElementById('maskCabRowsContainer');
+  container.innerHTML = maskCabRows.map((row, idx) => {
+    const idFieldId = maskRowFieldId(idx, 'id');
+    const dateFieldId = maskRowFieldId(idx, 'date');
+    const sizeFieldId = maskRowFieldId(idx, 'size');
+    return `
+      <div class="mask-row" data-idx="${idx}">
+        <div class="mask-row-header">
+          <select id="${sizeFieldId}" data-idx="${idx}" data-field="size">
+            <option value="Large" ${row.size === 'Large' ? 'selected' : ''}>Large</option>
+            <option value="Medium" ${row.size === 'Medium' ? 'selected' : ''}>Medium</option>
+            <option value="Small" ${row.size === 'Small' ? 'selected' : ''}>Small</option>
+            <option value="Other" ${row.size === 'Other' ? 'selected' : ''}>Other</option>
+          </select>
+          <button type="button" class="mask-row-remove" data-idx="${idx}" title="Remove this mask">✕</button>
+        </div>
+        <div class="input-with-scan">
+          <input type="text" id="${idFieldId}" data-idx="${idx}" data-field="id" placeholder="Tap 📡 to scan" value="${escapeAttr(row.id || '')}">
+          <button type="button" class="scan-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Read tag">📡</button>
+          <button type="button" class="scan-cam-btn" data-target="${idFieldId}" title="Scan barcode">📷</button>
+          <button type="button" class="write-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Write ID to tag">✏️</button>
+          <button type="button" class="write-date-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Update date only">📅</button>
+        </div>
+        <div class="mask-row-date">
+          <label>Calibration/EXP Date</label>
+          <input type="date" id="${dateFieldId}" data-idx="${idx}" data-field="date" value="${escapeAttr(row.expDate || '')}">
+        </div>
+      </div>
+    `;
+  }).join('') || '<div class="empty-state" style="padding:12px 0;">No masks added yet</div>';
+}
+
+document.getElementById('maskCabRowsContainer').addEventListener('input', (e) => {
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if (idx === undefined || !field) return;
+  const i = parseInt(idx, 10);
+  if (!maskCabRows[i]) return;
+  if (field === 'id') maskCabRows[i].id = e.target.value.trim();
+  if (field === 'date') maskCabRows[i].expDate = e.target.value;
+});
+document.getElementById('maskCabRowsContainer').addEventListener('change', (e) => {
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if (idx === undefined || !field) return;
+  const i = parseInt(idx, 10);
+  if (!maskCabRows[i]) return;
+  if (field === 'size') maskCabRows[i].size = e.target.value;
+});
+document.getElementById('maskCabRowsContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mask-row-remove');
+  if (!btn) return;
+  const i = parseInt(btn.dataset.idx, 10);
+  maskCabRows.splice(i, 1);
+  renderMaskCabRows();
+});
+document.getElementById('maskCabAddRowBtn').addEventListener('click', () => {
+  maskCabRows.push({ size: 'Large', id: '', expDate: '' });
+  renderMaskCabRows();
+});
+
 function openModal(id) {
   currentId = id;
   const existing = items[id];
@@ -1108,12 +1167,18 @@ function openModal(id) {
 
   document.getElementById('maskCabLocationInput').value = existing?.maskCabLocation || '';
   document.getElementById('maskCabConditionInput').value = existing?.maskCabCondition || '';
-  document.getElementById('maskCabLIdInput').value = existing?.maskCabLId || '';
-  document.getElementById('maskCabLExpDateInput').value = existing?.maskCabLExpDate || '';
-  document.getElementById('maskCabMIdInput').value = existing?.maskCabMId || '';
-  document.getElementById('maskCabMExpDateInput').value = existing?.maskCabMExpDate || '';
-  document.getElementById('maskCabSIdInput').value = existing?.maskCabSId || '';
-  document.getElementById('maskCabSExpDateInput').value = existing?.maskCabSExpDate || '';
+  if (existing && Array.isArray(existing.masks)) {
+    maskCabRows = existing.masks.map(m => ({ size: m.size || 'Large', id: m.id || '', expDate: m.expDate || '' }));
+  } else if (existing && (existing.maskCabLId || existing.maskCabMId || existing.maskCabSId)) {
+    // migrate old fixed L/M/S format from before masks became a dynamic list
+    maskCabRows = [];
+    if (existing.maskCabLId) maskCabRows.push({ size: 'Large', id: existing.maskCabLId, expDate: existing.maskCabLExpDate || '' });
+    if (existing.maskCabMId) maskCabRows.push({ size: 'Medium', id: existing.maskCabMId, expDate: existing.maskCabMExpDate || '' });
+    if (existing.maskCabSId) maskCabRows.push({ size: 'Small', id: existing.maskCabSId, expDate: existing.maskCabSExpDate || '' });
+  } else {
+    maskCabRows = [];
+  }
+  renderMaskCabRows();
   document.getElementById('maskCabSarNumberInput').value = existing?.maskCabSarNumber || '';
   document.getElementById('maskCabBoxInput').value = existing?.maskCabBox || '';
   document.getElementById('maskCabInspectionInput').value = existing?.maskCabInspection || '';
@@ -1204,12 +1269,7 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
 
     maskCabLocation: document.getElementById('maskCabLocationInput').value.trim(),
     maskCabCondition: document.getElementById('maskCabConditionInput').value,
-    maskCabLId: document.getElementById('maskCabLIdInput').value.trim(),
-    maskCabLExpDate: document.getElementById('maskCabLExpDateInput').value,
-    maskCabMId: document.getElementById('maskCabMIdInput').value.trim(),
-    maskCabMExpDate: document.getElementById('maskCabMExpDateInput').value,
-    maskCabSId: document.getElementById('maskCabSIdInput').value.trim(),
-    maskCabSExpDate: document.getElementById('maskCabSExpDateInput').value,
+    masks: maskCabRows.filter(m => m.id || m.expDate).map(m => ({ size: m.size, id: m.id, expDate: m.expDate })),
     maskCabSarNumber: document.getElementById('maskCabSarNumberInput').value.trim(),
     maskCabBox: document.getElementById('maskCabBoxInput').value,
     maskCabInspection: document.getElementById('maskCabInspectionInput').value,
@@ -1295,7 +1355,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
     'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
     'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
-    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab L Mask RFID', 'Mask Cab L Exp', 'Mask Cab M Mask RFID', 'Mask Cab M Exp', 'Mask Cab S Mask RFID', 'Mask Cab S Exp', 'Mask Cab SAR Number', 'Mask Cab Box', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
+    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab Masks', 'Mask Cab SAR Number', 'Mask Cab Box', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
     'SAR Location', 'SAR RFID/Barcode', 'SAR Inspection', 'SAR Last Inspected', 'SAR Comments',
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
     'SCBA Frame RFID', 'SCBA Last Calibration',
@@ -1315,7 +1375,9 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
       i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
       i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
-      i.maskCabLocation || '', i.maskCabCondition || '', i.maskCabLId || '', i.maskCabLExpDate || '', i.maskCabMId || '', i.maskCabMExpDate || '', i.maskCabSId || '', i.maskCabSExpDate || '', i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
+      i.maskCabLocation || '', i.maskCabCondition || '',
+      (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+      i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
       i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '',
@@ -1380,7 +1442,7 @@ async function openScanner(opts) {
       const trimmed = (val || '').trim();
       if (trimmed) {
         const input = document.getElementById(scannerTargetId);
-        if (input) input.value = trimmed;
+        if (input) { input.value = trimmed; input.dispatchEvent(new Event('input', { bubbles: true })); }
         if (scannerTargetId === 'historyLookupInput') renderComponentHistory(trimmed);
       }
     }
@@ -1416,7 +1478,7 @@ function scanLoop() {
       closeScanner();
       if (wasFieldMode && targetId) {
         const input = document.getElementById(targetId);
-        if (input) input.value = value;
+        if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
         showToast('Scanned: ' + value);
         if (targetId === 'historyLookupInput') renderComponentHistory(value);
         return;
@@ -1643,10 +1705,10 @@ async function scanNfcIntoField(targetInputId, dateTargetId) {
       if (!value) { showToast('Tag has no readable ID'); return; }
       if (navigator.vibrate) navigator.vibrate(60);
       const input = document.getElementById(targetInputId);
-      if (input) input.value = value;
+      if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
       if (dateTargetId && writtenDate) {
         const dateInput = document.getElementById(dateTargetId);
-        if (dateInput) dateInput.value = writtenDate;
+        if (dateInput) { dateInput.value = writtenDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
       }
       showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : ''));
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
@@ -1691,10 +1753,10 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
     done = true;
     clearTimeout(timeoutId);
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
-    if (input) input.value = trimmed;
+    if (input) { input.value = trimmed; input.dispatchEvent(new Event('input', { bubbles: true })); }
     if (dateValue && dateTargetId) {
       const dateInput = document.getElementById(dateTargetId);
-      if (dateInput) dateInput.value = dateValue;
+      if (dateInput) { dateInput.value = dateValue; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     }
     showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + ' to tag');
   } catch (err) {
@@ -1735,7 +1797,7 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId) {
     done = true;
     clearTimeout(timeoutId);
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
-    if (dateInput) dateInput.value = trimmedDate;
+    if (dateInput) { dateInput.value = trimmedDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     showToast('Updated date to ' + trimmedDate + ' (ID "' + currentId + '" unchanged)');
   } catch (err) {
     clearTimeout(timeoutId);
