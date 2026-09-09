@@ -233,6 +233,8 @@
       <button type="button" data-type="Emergency Light">Emerg. Light</button>
       <button type="button" data-type="Eyewash Station">Eyewash</button>
       <button type="button" data-type="Spill Kit">Spill Kit</button>
+      <button type="button" data-type="Mask Cabinet">Mask Cabinet</button>
+      <button type="button" data-type="SAR">SAR</button>
       <button type="button" data-type="SCBA Station">SCBA Station</button>
       <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
       <button type="button" data-type="SCBA Frame">SCBA Frame</button>
@@ -306,6 +308,79 @@
       <input type="date" id="spillLastInspectedInput">
       <label>Comments</label>
       <textarea id="spillCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Mask Cabinet (multiple masks stored together at a unit) -->
+    <div class="type-fields" id="fields-Mask Cabinet">
+      <label>Cabinet Location</label>
+      <input type="text" id="maskCabLocationInput" placeholder="e.g. Main Control Room Mask Cabinet">
+      <label>Cabinet Condition</label>
+      <select id="maskCabConditionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+
+      <label>L Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="maskCabLIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="maskCabLIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="maskCabLIdInput" data-date-target="maskCabLExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>L Mask Calibration/EXP Date</label>
+      <input type="date" id="maskCabLExpDateInput">
+
+      <label>M Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="maskCabMIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="maskCabMIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="maskCabMIdInput" data-date-target="maskCabMExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>M Mask Calibration/EXP Date</label>
+      <input type="date" id="maskCabMExpDateInput">
+
+      <label>S Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="maskCabSIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="maskCabSIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="maskCabSIdInput" data-date-target="maskCabSExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>S Mask Calibration/EXP Date</label>
+      <input type="date" id="maskCabSExpDateInput">
+
+      <label>General Inspection</label>
+      <select id="maskCabInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="maskCabLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="maskCabCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SAR (Supplied Air Regulator) -->
+    <div class="type-fields" id="fields-SAR">
+      <label>Location</label>
+      <input type="text" id="sarLocationInput" placeholder="e.g. Main Control Room SAR Station">
+      <label>Regulator Barcode/RFID</label>
+      <div class="input-with-scan">
+        <input type="text" id="sarIdInput" placeholder="Tap 📡 or 📷 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="sarIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="sarIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="sarIdInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>General Inspection</label>
+      <select id="sarInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="sarLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="sarCommentsInput" rows="2"></textarea>
     </div>
 
     <!-- SCBA Station (combined) fields -->
@@ -506,7 +581,7 @@ const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
 let items = {};
 let units = [];
@@ -614,6 +689,10 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
     recordComponentLink(item.stdFrameId, collectionPointId, 'Frame', timestamp);
   } else if (item.type === 'SCBA Mask') {
     recordComponentLink(item.stdMaskId, collectionPointId, (item.stdMaskSize || '') + ' Mask', timestamp);
+  } else if (item.type === 'Mask Cabinet') {
+    recordComponentLink(item.maskCabLId, collectionPointId, 'L Mask', timestamp);
+    recordComponentLink(item.maskCabMId, collectionPointId, 'M Mask', timestamp);
+    recordComponentLink(item.maskCabSId, collectionPointId, 'S Mask', timestamp);
   }
 }
 
@@ -649,6 +728,8 @@ function itemDisplayName(item, id) {
   if (item.type === 'Emergency Light') return item.lightLocation || id;
   if (item.type === 'Eyewash Station') return item.eyewashLocation || id;
   if (item.type === 'Spill Kit') return item.spillLocation || id;
+  if (item.type === 'Mask Cabinet') return item.maskCabLocation || id;
+  if (item.type === 'SAR') return item.sarLocation || id;
   if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
   if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
   if (item.type === 'SCBA Frame') return item.stdFrameId || id;
@@ -660,6 +741,8 @@ function itemInspectionResult(item) {
   if (item.type === 'Emergency Light') return item.lightInspection || '';
   if (item.type === 'Eyewash Station') return item.eyewashInspection || '';
   if (item.type === 'Spill Kit') return item.spillSeal || '';
+  if (item.type === 'Mask Cabinet') return item.maskCabInspection || '';
+  if (item.type === 'SAR') return item.sarInspection || '';
   if (item.type === 'SCBA Station') return item.scbaInspection || '';
   return '';
 }
@@ -678,6 +761,17 @@ function itemSummaryLine(item) {
   }
   if (item.type === 'Spill Kit') {
     const p = []; if (item.spillBoxCondition) p.push(item.spillBoxCondition); if (item.spillMissingItems && item.spillMissingItems.toLowerCase() !== 'none') p.push('Missing: ' + item.spillMissingItems);
+    return p.join(' · ');
+  }
+  if (item.type === 'Mask Cabinet') {
+    const p = [];
+    const maskCount = [item.maskCabLId, item.maskCabMId, item.maskCabSId].filter(Boolean).length;
+    if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
+    if (item.maskCabLastInspected) p.push('Inspected ' + item.maskCabLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'SAR') {
+    const p = []; if (item.sarId) p.push(item.sarId); if (item.sarLastInspected) p.push('Inspected ' + item.sarLastInspected);
     return p.join(' · ');
   }
   if (item.type === 'SCBA Station') {
@@ -728,6 +822,11 @@ function findMatchingId(value) {
         .some(f => f && String(f).trim().toLowerCase() === v)) {
         return id;
       }
+    } else if (item.type === 'Mask Cabinet') {
+      if ([item.maskCabLId, item.maskCabMId, item.maskCabSId]
+        .some(f => f && String(f).trim().toLowerCase() === v)) {
+        return id;
+      }
     }
   }
   return null;
@@ -737,6 +836,8 @@ function itemSearchHay(item, id) {
   const parts = [itemDisplayName(item, id), item.type, item.unit, id];
   if (item.type === 'SCBA Station') {
     parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
+  } else if (item.type === 'Mask Cabinet') {
+    parts.push(item.maskCabLId, item.maskCabMId, item.maskCabSId);
   }
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
@@ -865,6 +966,12 @@ const VIEW_FIELDS = {
   'Emergency Light': [['Location','lightLocation'],['Inspection','lightInspection'],['Last Inspected','lightLastInspected'],['Comments','lightComments']],
   'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
   'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
+  'Mask Cabinet': [['Location','maskCabLocation'],['Cabinet Condition','maskCabCondition'],
+    ['L Mask RFID','maskCabLId'],['L Mask Date','maskCabLExpDate'],
+    ['M Mask RFID','maskCabMId'],['M Mask Date','maskCabMExpDate'],
+    ['S Mask RFID','maskCabSId'],['S Mask Date','maskCabSExpDate'],
+    ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
+  'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
   'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
     ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],
     ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],
@@ -977,6 +1084,24 @@ function openModal(id) {
   document.getElementById('spillLastInspectedInput').value = existing?.spillLastInspected || '';
   document.getElementById('spillCommentsInput').value = existing?.spillComments || '';
 
+  document.getElementById('maskCabLocationInput').value = existing?.maskCabLocation || '';
+  document.getElementById('maskCabConditionInput').value = existing?.maskCabCondition || '';
+  document.getElementById('maskCabLIdInput').value = existing?.maskCabLId || '';
+  document.getElementById('maskCabLExpDateInput').value = existing?.maskCabLExpDate || '';
+  document.getElementById('maskCabMIdInput').value = existing?.maskCabMId || '';
+  document.getElementById('maskCabMExpDateInput').value = existing?.maskCabMExpDate || '';
+  document.getElementById('maskCabSIdInput').value = existing?.maskCabSId || '';
+  document.getElementById('maskCabSExpDateInput').value = existing?.maskCabSExpDate || '';
+  document.getElementById('maskCabInspectionInput').value = existing?.maskCabInspection || '';
+  document.getElementById('maskCabLastInspectedInput').value = existing?.maskCabLastInspected || '';
+  document.getElementById('maskCabCommentsInput').value = existing?.maskCabComments || '';
+
+  document.getElementById('sarLocationInput').value = existing?.sarLocation || '';
+  document.getElementById('sarIdInput').value = existing?.sarId || '';
+  document.getElementById('sarInspectionInput').value = existing?.sarInspection || '';
+  document.getElementById('sarLastInspectedInput').value = existing?.sarLastInspected || '';
+  document.getElementById('sarCommentsInput').value = existing?.sarComments || '';
+
   document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
   document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
   document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
@@ -1053,6 +1178,24 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     spillLastInspected: document.getElementById('spillLastInspectedInput').value,
     spillComments: document.getElementById('spillCommentsInput').value.trim(),
 
+    maskCabLocation: document.getElementById('maskCabLocationInput').value.trim(),
+    maskCabCondition: document.getElementById('maskCabConditionInput').value,
+    maskCabLId: document.getElementById('maskCabLIdInput').value.trim(),
+    maskCabLExpDate: document.getElementById('maskCabLExpDateInput').value,
+    maskCabMId: document.getElementById('maskCabMIdInput').value.trim(),
+    maskCabMExpDate: document.getElementById('maskCabMExpDateInput').value,
+    maskCabSId: document.getElementById('maskCabSIdInput').value.trim(),
+    maskCabSExpDate: document.getElementById('maskCabSExpDateInput').value,
+    maskCabInspection: document.getElementById('maskCabInspectionInput').value,
+    maskCabLastInspected: document.getElementById('maskCabLastInspectedInput').value,
+    maskCabComments: document.getElementById('maskCabCommentsInput').value.trim(),
+
+    sarLocation: document.getElementById('sarLocationInput').value.trim(),
+    sarId: document.getElementById('sarIdInput').value.trim(),
+    sarInspection: document.getElementById('sarInspectionInput').value,
+    sarLastInspected: document.getElementById('sarLastInspectedInput').value,
+    sarComments: document.getElementById('sarCommentsInput').value.trim(),
+
     scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
     scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
     scbaFrameId: document.getElementById('scbaFrameIdInput').value.trim(),
@@ -1126,6 +1269,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
     'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
     'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
+    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab L Mask RFID', 'Mask Cab L Exp', 'Mask Cab M Mask RFID', 'Mask Cab M Exp', 'Mask Cab S Mask RFID', 'Mask Cab S Exp', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
+    'SAR Location', 'SAR RFID/Barcode', 'SAR Inspection', 'SAR Last Inspected', 'SAR Comments',
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
     'SCBA Frame RFID', 'SCBA Last Calibration',
     'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
@@ -1144,6 +1289,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
       i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
       i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
+      i.maskCabLocation || '', i.maskCabCondition || '', i.maskCabLId || '', i.maskCabLExpDate || '', i.maskCabMId || '', i.maskCabMExpDate || '', i.maskCabSId || '', i.maskCabSExpDate || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
+      i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '',
       i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
