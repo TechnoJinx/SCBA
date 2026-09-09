@@ -136,6 +136,13 @@
     font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
   }
 
+  .view-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
+    border-bottom: 1px solid #263244; font-size: 14px;
+  }
+  .view-row .view-label { color: var(--text-dim); flex: 0 0 auto; }
+  .view-row .view-value { color: var(--text); text-align: right; word-break: break-word; }
+
   .history-section { margin-top: 16px; border-top: 1px solid var(--card-border); padding-top: 12px; }
   .history-toggle { background: none; border: none; color: var(--accent); font-size: 13px; padding: 0; cursor: pointer; }
   .history-list { margin-top: 10px; max-height: 160px; overflow-y: auto; display: none; }
@@ -423,6 +430,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="viewOverlay">
+  <div class="modal">
+    <h2 id="viewTitle">View Item</h2>
+    <div class="tag-id" id="viewSubtitle"></div>
+    <div id="viewFieldsContainer"></div>
+    <div class="history-section" id="viewHistorySection" style="display:none;">
+      <button type="button" class="history-toggle" id="viewHistoryToggle">Show scan history ▾</button>
+      <div class="history-list" id="viewHistoryList"></div>
+    </div>
+    <div class="modal-buttons">
+      <button id="viewCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="viewEditBtn" style="background:var(--accent);color:#052e3d;">Edit</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="historyLookupOverlay">
   <div class="modal">
     <h2>Component Movement History</h2>
@@ -693,6 +716,7 @@ function renderList() {
         <div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>
       </div>
       <div class="item-actions">
+        <button class="viewBtn" data-id="${escapeAttr(id)}">View</button>
         <button class="editBtn" data-id="${escapeAttr(id)}">Edit</button>
       </div>
     </div>
@@ -700,6 +724,9 @@ function renderList() {
 
   listEl.querySelectorAll('.editBtn').forEach(btn => {
     btn.addEventListener('click', () => openModal(btn.dataset.id));
+  });
+  listEl.querySelectorAll('.viewBtn').forEach(btn => {
+    btn.addEventListener('click', () => openView(btn.dataset.id));
   });
 }
 
@@ -768,6 +795,86 @@ document.getElementById('historyToggle').addEventListener('click', () => {
 });
 
 // ---------- Modal ----------
+// ---------- Read-only View ----------
+const VIEW_FIELDS = {
+  'Extinguisher': [['Location','extLocation'],['Weight & Agent','extWeightAgent'],['Inspection','extInspection'],['Last Inspected','extLastInspected'],['Comments','extComments']],
+  'Emergency Light': [['Location','lightLocation'],['Inspection','lightInspection'],['Last Inspected','lightLastInspected'],['Comments','lightComments']],
+  'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
+    ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],
+    ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],
+    ['L Mask RFID','scbaLMaskId'],['L Mask Date','scbaLMaskExpDate'],
+    ['M Mask RFID','scbaMMaskId'],['M Mask Date','scbaMMaskExpDate'],
+    ['S Mask RFID','scbaSMaskId'],['S Mask Date','scbaSMaskExpDate'],
+    ['Inspection','scbaInspection'],['Last Inspected','scbaLastInspected'],['Comments','scbaComments']],
+  'SCBA Cylinder': [['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Comments','stdCylComments']],
+  'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Comments','stdFrameComments']],
+  'SCBA Mask': [['Size','stdMaskSize'],['Mask RFID','stdMaskId'],['EXP Date','stdMaskExpDate'],['Comments','stdMaskComments']]
+};
+
+let viewingId = null;
+function openView(id) {
+  const item = items[id];
+  if (!item) return;
+  viewingId = id;
+  document.getElementById('viewTitle').textContent = itemDisplayName(item, id);
+  const sub = [];
+  if (!id.startsWith('UNASSIGNED-')) sub.push('ID: ' + id);
+  if (item.unit) sub.push(item.unit);
+  sub.push(item.type);
+  document.getElementById('viewSubtitle').textContent = sub.join(' · ');
+
+  const fields = VIEW_FIELDS[item.type] || [];
+  const container = document.getElementById('viewFieldsContainer');
+  container.innerHTML = fields
+    .filter(([, key]) => item[key])
+    .map(([label, key]) => `
+      <div class="view-row">
+        <span class="view-label">${escapeHtml(label)}</span>
+        <span class="view-value">${escapeHtml(item[key])}</span>
+      </div>
+    `).join('') || '<div class="empty-state" style="padding:16px 0;">No details recorded yet</div>';
+
+  renderViewHistory(item);
+  document.getElementById('viewOverlay').classList.add('show');
+}
+function renderViewHistory(item) {
+  const section = document.getElementById('viewHistorySection');
+  const list = document.getElementById('viewHistoryList');
+  const history = (item && item.history) || [];
+  if (!history.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.classList.remove('show');
+  document.getElementById('viewHistoryToggle').textContent = 'Show scan history ▾';
+  list.innerHTML = history.slice().reverse().map(h => `
+    <div class="history-row">
+      <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+      <span>${new Date(h.timestamp).toLocaleString()}</span>
+    </div>
+  `).join('');
+}
+document.getElementById('viewHistoryToggle').addEventListener('click', () => {
+  const list = document.getElementById('viewHistoryList');
+  const toggle = document.getElementById('viewHistoryToggle');
+  list.classList.toggle('show');
+  toggle.textContent = list.classList.contains('show') ? 'Hide scan history ▴' : 'Show scan history ▾';
+});
+document.getElementById('viewCloseBtn').addEventListener('click', () => {
+  document.getElementById('viewOverlay').classList.remove('show');
+  viewingId = null;
+});
+document.getElementById('viewOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'viewOverlay') {
+    document.getElementById('viewOverlay').classList.remove('show');
+    viewingId = null;
+  }
+});
+document.getElementById('viewEditBtn').addEventListener('click', () => {
+  const id = viewingId;
+  document.getElementById('viewOverlay').classList.remove('show');
+  viewingId = null;
+  if (id) openModal(id);
+});
+
 function openModal(id) {
   currentId = id;
   const existing = items[id];
