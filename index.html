@@ -205,6 +205,7 @@
   <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
   <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
   <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
+  <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
 <div class="toolbar">
@@ -1285,6 +1286,28 @@ document.getElementById('manualEntryLink').addEventListener('click', () => {
 document.getElementById('addUnassignedLink').addEventListener('click', () => {
   const id = 'UNASSIGNED-' + Date.now().toString(36).toUpperCase();
   openModal(id);
+});
+
+document.getElementById('hardResetLink').addEventListener('click', async () => {
+  const confirmed = confirm(
+    'This deletes ALL data stored in this app on THIS device (including anything you\'ve scanned/entered), ' +
+    'unregisters the offline cache, and reloads fresh from GitHub. This cannot be undone. Continue?'
+  );
+  if (!confirmed) return;
+  try {
+    localStorage.clear();
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(n => caches.delete(n)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {
+    alert('Reset ran into an issue: ' + (e && e.message ? e.message : e) + ' — try reloading manually.');
+  }
+  location.reload(true);
 });
 
 // ---------- Component movement history lookup ----------
