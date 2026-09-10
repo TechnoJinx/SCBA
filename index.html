@@ -1234,7 +1234,7 @@ function openModal(id) {
   document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || '';
   document.getElementById('stdFrameCommentsInput').value = existing?.stdFrameComments || '';
 
-  document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || 'Large';
+  document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || (!existing ? getKnownSizeForComponent(id) : null) || 'Large';
   document.getElementById('stdMaskIdInput').value = existing?.stdMaskId || '';
   document.getElementById('stdMaskExpDateInput').value = existing?.stdMaskExpDate || '';
   document.getElementById('stdMaskCommentsInput').value = existing?.stdMaskComments || '';
@@ -1330,6 +1330,14 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     stdMaskExpDate: document.getElementById('stdMaskExpDateInput').value,
     stdMaskComments: document.getElementById('stdMaskCommentsInput').value.trim()
   };
+
+  // For standalone equipment, the outer scanned barcode/tag almost always IS the item's own
+  // identifier. If the inner RFID field was left blank (no separate tag scanned into the form),
+  // default it to the outer ID so this item's size/history is tracked under the barcode that
+  // was actually scanned, not silently lost.
+  if (draft.type === 'SCBA Cylinder' && !draft.stdCylId) draft.stdCylId = currentId;
+  if (draft.type === 'SCBA Frame' && !draft.stdFrameId) draft.stdFrameId = currentId;
+  if (draft.type === 'SCBA Mask' && !draft.stdMaskId) draft.stdMaskId = currentId;
 
   function equipmentSnapshot(d) {
     const snap = [];
