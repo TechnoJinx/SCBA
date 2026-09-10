@@ -514,7 +514,7 @@
       <div class="input-with-scan">
         <input type="text" id="stdMaskIdInput" placeholder="Tap 📡 to scan the mask's tag">
         <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Read tag">📡</button>
-        <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" data-size-target="stdMaskSizeInput" title="Scan barcode">📷</button>
         <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Write ID to tag">✏️</button>
         <button type="button" class="write-date-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Update date only">📅</button>
       </div>
@@ -1087,7 +1087,7 @@ function renderMaskCabRows() {
         <div class="input-with-scan">
           <input type="text" id="${idFieldId}" data-idx="${idx}" data-field="id" placeholder="Tap 📡 to scan" value="${escapeAttr(row.id || '')}">
           <button type="button" class="scan-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Read tag">📡</button>
-          <button type="button" class="scan-cam-btn" data-target="${idFieldId}" title="Scan barcode">📷</button>
+          <button type="button" class="scan-cam-btn" data-target="${idFieldId}" data-size-target="${sizeFieldId}" title="Scan barcode">📷</button>
           <button type="button" class="write-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Write ID to tag">✏️</button>
           <button type="button" class="write-date-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Update date only">📅</button>
         </div>
@@ -1415,8 +1415,9 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 // ---------- Camera barcode scanner (native BarcodeDetector, no external libs) ----------
 let scannerStream = null;
 let scannerRAF = null;
-let scannerMode = 'entry'; // 'entry' = find/create a collection point, 'field' = fill one input
+let scannerMode = 'entry';
 let scannerTargetId = null;
+let scannerSizeTargetId = null;
 let barcodeDetector = null;
 if ('BarcodeDetector' in window) {
   try {
@@ -1426,10 +1427,36 @@ if ('BarcodeDetector' in window) {
   } catch (e) { barcodeDetector = null; }
 }
 
+function getKnownSizeForComponent(componentId) {
+  const key = String(componentId).trim();
+  const entries = componentHistory[key];
+  if (!entries || !entries.length) return null;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const role = entries[i].role || '';
+    if (role.endsWith(' Mask')) {
+      const size = role.slice(0, -5).trim();
+      if (['Large', 'Medium', 'Small', 'Other'].includes(size)) return size;
+    }
+  }
+  return null;
+}
+function applyKnownSizeIfAny(value, sizeTargetId) {
+  if (!sizeTargetId) return;
+  const size = getKnownSizeForComponent(value);
+  if (!size) return;
+  const sizeInput = document.getElementById(sizeTargetId);
+  if (sizeInput && [...sizeInput.options].some(o => o.value === size)) {
+    sizeInput.value = size;
+    sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
+    sizeInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 async function openScanner(opts) {
   opts = opts || {};
   scannerMode = opts.targetId ? 'field' : 'entry';
   scannerTargetId = opts.targetId || null;
+  scannerSizeTargetId = opts.sizeTargetId || null;
 
   if (!barcodeDetector) {
     showToast('Camera barcode scanning isn\'t supported in this browser');
@@ -1443,6 +1470,7 @@ async function openScanner(opts) {
       if (trimmed) {
         const input = document.getElementById(scannerTargetId);
         if (input) { input.value = trimmed; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        applyKnownSizeIfAny(trimmed, scannerSizeTargetId);
         if (scannerTargetId === 'historyLookupInput') renderComponentHistory(trimmed);
       }
     }
@@ -1475,10 +1503,12 @@ function scanLoop() {
       if (navigator.vibrate) navigator.vibrate(60);
       const wasFieldMode = scannerMode === 'field';
       const targetId = scannerTargetId;
+      const sizeTargetId = scannerSizeTargetId;
       closeScanner();
       if (wasFieldMode && targetId) {
         const input = document.getElementById(targetId);
         if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        applyKnownSizeIfAny(value, sizeTargetId);
         showToast('Scanned: ' + value);
         if (targetId === 'historyLookupInput') renderComponentHistory(value);
         return;
@@ -1505,13 +1535,14 @@ function closeScanner() {
   document.getElementById('scannerOverlay').classList.remove('show');
   scannerMode = 'entry';
   scannerTargetId = null;
+  scannerSizeTargetId = null;
 }
 
 document.getElementById('scannerCancelBtn').addEventListener('click', closeScanner);
 document.getElementById('scanBarcodeEntryBtn').addEventListener('click', () => openScanner());
 document.addEventListener('click', (e) => {
   const camBtn = e.target.closest('.scan-cam-btn');
-  if (camBtn) openScanner({ targetId: camBtn.dataset.target });
+  if (camBtn) openScanner({ targetId: camBtn.dataset.target, sizeTargetId: camBtn.dataset.sizeTarget || null });
 });
 document.getElementById('manualEntryLink').addEventListener('click', () => {
   const val = prompt('Enter the collection point barcode or NFC ID manually:');
@@ -1719,6 +1750,8 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
           sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
           sizeInput.dispatchEvent(new Event('change', { bubbles: true }));
         }
+      } else if (sizeTargetId) {
+        applyKnownSizeIfAny(value, sizeTargetId);
       }
       showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : '') + (writtenSize ? ' · Size: ' + writtenSize : ''));
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
