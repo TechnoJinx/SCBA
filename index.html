@@ -513,10 +513,10 @@
       <label>Mask RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="stdMaskIdInput" placeholder="Tap 📡 to scan the mask's tag">
-        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Read tag">📡</button>
         <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Write ID to tag">✏️</button>
-        <button type="button" class="write-date-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" title="Update date only">📅</button>
+        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Update date only">📅</button>
       </div>
       <label>EXP / Last Inspected</label>
       <input type="date" id="stdMaskExpDateInput">
@@ -1086,10 +1086,10 @@ function renderMaskCabRows() {
         </div>
         <div class="input-with-scan">
           <input type="text" id="${idFieldId}" data-idx="${idx}" data-field="id" placeholder="Tap 📡 to scan" value="${escapeAttr(row.id || '')}">
-          <button type="button" class="scan-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Read tag">📡</button>
+          <button type="button" class="scan-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Read tag">📡</button>
           <button type="button" class="scan-cam-btn" data-target="${idFieldId}" title="Scan barcode">📷</button>
-          <button type="button" class="write-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Write ID to tag">✏️</button>
-          <button type="button" class="write-date-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" title="Update date only">📅</button>
+          <button type="button" class="write-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Write ID to tag">✏️</button>
+          <button type="button" class="write-date-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Update date only">📅</button>
         </div>
         <div class="mask-row-date">
           <label>Calibration/EXP Date</label>
@@ -1653,24 +1653,25 @@ scanNfcEntryBtn.addEventListener('click', () => {
 // ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
 document.addEventListener('click', (e) => {
   const readBtn = e.target.closest('.scan-nfc-btn');
-  if (readBtn) scanNfcIntoField(readBtn.dataset.target, readBtn.dataset.dateTarget || null);
+  if (readBtn) scanNfcIntoField(readBtn.dataset.target, readBtn.dataset.dateTarget || null, readBtn.dataset.sizeTarget || null);
   const writeBtn = e.target.closest('.write-nfc-btn');
-  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target, writeBtn.dataset.dateTarget || null);
+  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target, writeBtn.dataset.dateTarget || null, writeBtn.dataset.sizeTarget || null);
   const dateBtn = e.target.closest('.write-date-btn');
-  if (dateBtn) writeDateOnlyToTag(dateBtn.dataset.target, dateBtn.dataset.dateTarget);
+  if (dateBtn) writeDateOnlyToTag(dateBtn.dataset.target, dateBtn.dataset.dateTarget, dateBtn.dataset.sizeTarget || null);
 });
 
 function readTextRecords(message) {
-  // Returns every decoded text record on the tag, in order. First is the ID, second (if present) is a companion date.
+  // Returns every decoded text record on the tag, in position order (including empty ones,
+  // so a skipped middle field like "no date but has a size" doesn't shift later positions).
+  // Position 0 = ID, 1 = companion date, 2 = companion size, when present.
   if (!message || !message.records) return [];
   const out = [];
   for (const record of message.records) {
     if (record.recordType === 'text') {
       try {
         const decoder = new TextDecoder(record.encoding || 'utf-8');
-        const text = decoder.decode(record.data).trim();
-        if (text) out.push(text);
-      } catch (e) { /* ignore malformed record */ }
+        out.push(decoder.decode(record.data).trim());
+      } catch (e) { out.push(''); }
     }
   }
   return out;
@@ -1681,7 +1682,7 @@ function readTextRecord(message) {
 }
 function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
-async function scanNfcIntoField(targetInputId, dateTargetId) {
+async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — enter it manually');
     return;
@@ -1701,6 +1702,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId) {
       const textRecords = readTextRecords(event.message);
       const writtenId = textRecords[0] || null;
       const writtenDate = textRecords[1] && isIsoDate(textRecords[1]) ? textRecords[1] : null;
+      const writtenSize = textRecords[2] || null;
       const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
       if (navigator.vibrate) navigator.vibrate(60);
@@ -1710,7 +1712,15 @@ async function scanNfcIntoField(targetInputId, dateTargetId) {
         const dateInput = document.getElementById(dateTargetId);
         if (dateInput) { dateInput.value = writtenDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
       }
-      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : ''));
+      if (sizeTargetId && writtenSize) {
+        const sizeInput = document.getElementById(sizeTargetId);
+        if (sizeInput && [...sizeInput.options].some(o => o.value === writtenSize)) {
+          sizeInput.value = writtenSize;
+          sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
+          sizeInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : '') + (writtenSize ? ' · Size: ' + writtenSize : ''));
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
     });
   } catch (err) {
@@ -1719,7 +1729,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId) {
   }
 }
 
-async function writeNfcIdToTag(targetInputId, dateTargetId) {
+async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser');
     return;
@@ -1740,6 +1750,13 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
     else if (trimmedDate) showToast('Date not in YYYY-MM-DD format — skipping date, writing ID only');
   }
 
+  // Size isn't prompted separately — whatever's currently selected in the Size dropdown gets written.
+  let sizeValue = '';
+  if (sizeTargetId) {
+    const sizeInput = document.getElementById(sizeTargetId);
+    sizeValue = sizeInput ? sizeInput.value : '';
+  }
+
   showToast('Hold the blank/existing tag to the back of your phone to write…');
   let done = false;
   const timeoutId = setTimeout(() => {
@@ -1747,7 +1764,8 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
   }, 10000);
   try {
     const records = [{ recordType: 'text', data: trimmed }];
-    if (dateValue) records.push({ recordType: 'text', data: dateValue });
+    if (dateValue || sizeValue) records.push({ recordType: 'text', data: dateValue });
+    if (sizeValue) records.push({ recordType: 'text', data: sizeValue });
     const writer = new NDEFReader();
     await writer.write({ records });
     done = true;
@@ -1758,7 +1776,7 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
       const dateInput = document.getElementById(dateTargetId);
       if (dateInput) { dateInput.value = dateValue; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     }
-    showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + ' to tag');
+    showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + (sizeValue ? ' + size ' + sizeValue : '') + ' to tag');
   } catch (err) {
     clearTimeout(timeoutId);
     if (!done) {
@@ -1768,7 +1786,7 @@ async function writeNfcIdToTag(targetInputId, dateTargetId) {
   }
 }
 
-async function writeDateOnlyToTag(targetInputId, dateTargetId) {
+async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser');
     return;
@@ -1786,14 +1804,23 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId) {
   if (!trimmedDate) return;
   if (!isIsoDate(trimmedDate)) { showToast('Date must be in YYYY-MM-DD format'); return; }
 
+  // Preserve whatever size is currently selected too, so a date-only refresh doesn't erase it.
+  let sizeValue = '';
+  if (sizeTargetId) {
+    const sizeInput = document.getElementById(sizeTargetId);
+    sizeValue = sizeInput ? sizeInput.value : '';
+  }
+
   showToast('Hold the tag to the back of your phone to update the date…');
   let done = false;
   const timeoutId = setTimeout(() => {
     if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
   }, 10000);
   try {
+    const records = [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }];
+    if (sizeValue) records.push({ recordType: 'text', data: sizeValue });
     const writer = new NDEFReader();
-    await writer.write({ records: [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }] });
+    await writer.write({ records });
     done = true;
     clearTimeout(timeoutId);
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
