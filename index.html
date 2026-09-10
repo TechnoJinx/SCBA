@@ -599,7 +599,9 @@ function expandSeedData(compact) {
       scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments]) => {
     out[id] = { type: 'SCBA Station', unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
       scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments,
-      history: [{ location: scbaCabinetLocation, result: scbaInspection, timestamp: now }], createdAt: now, updatedAt: now };
+      history: [{ location: scbaCabinetLocation, result: scbaInspection, timestamp: now, equipment:
+        [['Frame', scbaFrameId], ['Cylinder', scbaCylinderId], ['L Mask', scbaLMaskId], ['M Mask', scbaMMaskId], ['S Mask', scbaSMaskId]]
+          .filter(([, v]) => v) }], createdAt: now, updatedAt: now };
   });
   (compact.stdcyl || []).forEach(([id, unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments]) => {
     out[id] = { type: 'SCBA Cylinder', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
@@ -622,7 +624,8 @@ function expandSeedData(compact) {
     if (maskCabSId) masks.push({ size: 'Small', id: maskCabSId, expDate: maskCabSExpDate || '' });
     out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, masks, maskCabSarNumber, maskCabBox,
       maskCabInspection, maskCabLastInspected, maskCabComments,
-      history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now }], createdAt: now, updatedAt: now };
+      history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now, equipment:
+        [...masks.filter(m => m.id).map(m => [(m.size || '') + ' Mask', m.id]), ...(maskCabSarNumber ? [['SAR', maskCabSarNumber]] : [])] }], createdAt: now, updatedAt: now };
   });
   return out;
 }
@@ -943,6 +946,10 @@ document.getElementById('unitInput').addEventListener('change', (e) => {
 });
 
 // ---------- History ----------
+function formatEquipmentSnapshot(equipment) {
+  if (!equipment || !equipment.length) return '';
+  return equipment.map(([role, id]) => `${role}: ${escapeHtml(id)}`).join(' · ');
+}
 function renderHistory(item) {
   const section = document.getElementById('historySection');
   const list = document.getElementById('historyList');
@@ -951,12 +958,17 @@ function renderHistory(item) {
   section.style.display = 'block';
   list.classList.remove('show');
   document.getElementById('historyToggle').textContent = 'Show scan history ▾';
-  list.innerHTML = history.slice().reverse().map(h => `
-    <div class="history-row">
-      <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
-      <span>${new Date(h.timestamp).toLocaleString()}</span>
+  list.innerHTML = history.slice().reverse().map(h => {
+    const eq = formatEquipmentSnapshot(h.equipment);
+    return `
+    <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span>${new Date(h.timestamp).toLocaleString()}</span>
+      </div>
+      ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
     </div>
-  `).join('');
+  `; }).join('');
 }
 document.getElementById('historyToggle').addEventListener('click', () => {
   const list = document.getElementById('historyList');
@@ -1032,12 +1044,17 @@ function renderViewHistory(item) {
   section.style.display = 'block';
   list.classList.remove('show');
   document.getElementById('viewHistoryToggle').textContent = 'Show scan history ▾';
-  list.innerHTML = history.slice().reverse().map(h => `
-    <div class="history-row">
-      <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
-      <span>${new Date(h.timestamp).toLocaleString()}</span>
+  list.innerHTML = history.slice().reverse().map(h => {
+    const eq = formatEquipmentSnapshot(h.equipment);
+    return `
+    <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span>${new Date(h.timestamp).toLocaleString()}</span>
+      </div>
+      ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
     </div>
-  `).join('');
+  `; }).join('');
 }
 document.getElementById('viewHistoryToggle').addEventListener('click', () => {
   const list = document.getElementById('viewHistoryList');
@@ -1314,10 +1331,30 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     stdMaskComments: document.getElementById('stdMaskCommentsInput').value.trim()
   };
 
+  function equipmentSnapshot(d) {
+    const snap = [];
+    if (d.type === 'SCBA Station') {
+      if (d.scbaFrameId) snap.push(['Frame', d.scbaFrameId]);
+      if (d.scbaCylinderId) snap.push(['Cylinder', d.scbaCylinderId]);
+      if (d.scbaLMaskId) snap.push(['L Mask', d.scbaLMaskId]);
+      if (d.scbaMMaskId) snap.push(['M Mask', d.scbaMMaskId]);
+      if (d.scbaSMaskId) snap.push(['S Mask', d.scbaSMaskId]);
+    } else if (d.type === 'Mask Cabinet') {
+      (d.masks || []).filter(m => m.id).forEach(m => snap.push([(m.size || '') + ' Mask', m.id]));
+      if (d.maskCabSarNumber) snap.push(['SAR', d.maskCabSarNumber]);
+    }
+    return snap;
+  }
+
   const now = Date.now();
   const existing = items[currentId];
   const history = existing?.history ? existing.history.slice() : [];
-  history.push({ location: itemDisplayName(draft, currentId), result: itemInspectionResult(draft), timestamp: now });
+  history.push({
+    location: itemDisplayName(draft, currentId),
+    result: itemInspectionResult(draft),
+    timestamp: now,
+    equipment: equipmentSnapshot(draft)
+  });
 
   items[currentId] = { ...draft, history, updatedAt: now, createdAt: existing?.createdAt || now };
   recordComponentLinksForItem(draft, currentId, now);
