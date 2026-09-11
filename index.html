@@ -1168,7 +1168,9 @@ function openModal(id) {
     ? 'Not yet at a location — link its RFID/barcode below when you have it'
     : 'ID: ' + id;
 
-  const defaultType = existing?.type || 'Extinguisher';
+  const regEntry = !existing ? equipmentRegistry[String(id).trim()] : null;
+  const regDefaultType = regEntry ? (regEntry.type === 'Frame' ? 'SCBA Frame' : (['Large', 'Medium', 'Small'].includes(regEntry.type) ? 'SCBA Mask' : null)) : null;
+  const defaultType = existing?.type || regDefaultType || 'Extinguisher';
   setType(defaultType);
   populateUnitSelect(existing?.unit);
 
@@ -1245,12 +1247,12 @@ function openModal(id) {
   document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
 
   document.getElementById('stdFrameIdInput').value = existing?.stdFrameId || '';
-  document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || '';
+  document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || (!existing ? getKnownDateForComponent(id) : null) || '';
   document.getElementById('stdFrameCommentsInput').value = existing?.stdFrameComments || '';
 
   document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || (!existing ? getKnownSizeForComponent(id) : null) || 'Large';
   document.getElementById('stdMaskIdInput').value = existing?.stdMaskId || '';
-  document.getElementById('stdMaskExpDateInput').value = existing?.stdMaskExpDate || '';
+  document.getElementById('stdMaskExpDateInput').value = existing?.stdMaskExpDate || (!existing ? getKnownDateForComponent(id) : null) || '';
   document.getElementById('stdMaskCommentsInput').value = existing?.stdMaskComments || '';
 
   renderHistory(existing);
