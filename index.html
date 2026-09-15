@@ -904,18 +904,78 @@ function itemSearchHay(item, id) {
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
 
+// When filtering by SCBA Frame/Cylinder/Mask, also surface components linked *inside* a
+// Station or Mask Cabinet — not just standalone records. These are "virtual" list entries:
+// tapping View/Edit opens the actual parent record, since that's where the data lives.
+function getLinkedComponentEntries(typeFilter) {
+  const virtual = [];
+  Object.entries(items).forEach(([parentId, item]) => {
+    if (item.type === 'SCBA Station') {
+      const parentLabel = itemDisplayName(item, parentId);
+      if (typeFilter === 'SCBA Frame' && item.scbaFrameId) {
+        const parts = [];
+        if (item.scbaLastCalibration) parts.push('Cal ' + item.scbaLastCalibration);
+        if (item.scbaFrameSerialNumber) parts.push('SN ' + item.scbaFrameSerialNumber);
+        virtual.push({ id: parentId, name: item.scbaFrameId, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      }
+      if (typeFilter === 'SCBA Cylinder' && item.scbaCylinderId) {
+        const parts = [];
+        if (item.scbaLastHydro) parts.push('Hydro ' + item.scbaLastHydro);
+        if (item.scbaPressure) parts.push(item.scbaPressure + ' psi');
+        if (item.scbaCylinderSerialNumber) parts.push('SN ' + item.scbaCylinderSerialNumber);
+        virtual.push({ id: parentId, name: item.scbaCylinderId, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      }
+      if (typeFilter === 'SCBA Mask') {
+        [['scbaLMaskId', 'scbaLMaskExpDate', 'Large'], ['scbaMMaskId', 'scbaMMaskExpDate', 'Medium'], ['scbaSMaskId', 'scbaSMaskExpDate', 'Small']]
+          .forEach(([idField, dateField, sizeLabel]) => {
+            if (item[idField]) {
+              const parts = [sizeLabel + ' Mask'];
+              if (item[dateField]) parts.push(item[dateField]);
+              virtual.push({ id: parentId, name: item[idField], summary: parts.join(' · '), unit: item.unit,
+                result: '', updatedAt: item.updatedAt, via: parentLabel });
+            }
+          });
+      }
+    } else if (item.type === 'Mask Cabinet' && typeFilter === 'SCBA Mask') {
+      const parentLabel = itemDisplayName(item, parentId);
+      (item.masks || []).filter(m => m.id).forEach(m => {
+        const parts = [(m.size || '') + ' Mask'];
+        if (m.expDate) parts.push(m.expDate);
+        virtual.push({ id: parentId, name: m.id, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      });
+    }
+  });
+  return virtual;
+}
+
 function renderList() {
   const listEl = document.getElementById('itemList');
   const query = document.getElementById('searchInput').value.trim().toLowerCase();
   const typeFilterVal = document.getElementById('typeFilter').value;
   const unitFilterVal = document.getElementById('unitFilter').value;
-  const entries = Object.entries(items).filter(([id, item]) => {
+
+  const realEntries = Object.entries(items).filter(([id, item]) => {
     if (typeFilterVal && item.type !== typeFilterVal) return false;
     if (unitFilterVal && item.unit !== unitFilterVal) return false;
     if (!query) return true;
     const hay = itemSearchHay(item, id);
     return hay.includes(query);
-  }).sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+  }).map(([id, item]) => ({ id, item, virtual: null }));
+
+  let virtualEntries = [];
+  if (['SCBA Frame', 'SCBA Cylinder', 'SCBA Mask'].includes(typeFilterVal)) {
+    virtualEntries = getLinkedComponentEntries(typeFilterVal).filter(v => {
+      if (unitFilterVal && v.unit !== unitFilterVal) return false;
+      if (!query) return true;
+      return (v.name + ' ' + v.via + ' ' + (v.unit || '')).toLowerCase().includes(query);
+    }).map(v => ({ id: v.id, item: items[v.id], virtual: v }));
+  }
+
+  const entries = [...realEntries, ...virtualEntries]
+    .sort((a, b) => (b.item.updatedAt || 0) - (a.item.updatedAt || 0));
 
   document.getElementById('itemCount').textContent =
     Object.keys(items).length + ' item' + (Object.keys(items).length === 1 ? '' : 's') + ' tracked';
@@ -925,22 +985,26 @@ function renderList() {
     return;
   }
 
-  listEl.innerHTML = entries.map(([id, item]) => {
-    const result = itemInspectionResult(item);
+  listEl.innerHTML = entries.map(({ id, item, virtual }) => {
+    const result = virtual ? '' : itemInspectionResult(item);
     const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
       : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
+    const name = virtual ? virtual.name : itemDisplayName(item, id);
+    const summary = virtual ? virtual.summary : itemSummaryLine(item);
+    const typeLabel = virtual ? typeFilterVal : item.type;
+    const unitLabel = virtual ? virtual.unit : item.unit;
     return `
     <div class="item-card" data-id="${escapeAttr(id)}">
       <div class="item-info">
-        <div class="item-name">${escapeHtml(itemDisplayName(item, id))}</div>
-        <div class="item-meta">${escapeHtml(itemSummaryLine(item))}</div>
+        <div class="item-name">${escapeHtml(name)}</div>
+        <div class="item-meta">${escapeHtml(summary)}</div>
         <div class="badges">
-          ${item.type ? `<span class="badge badge-type">${escapeHtml(item.type)}</span>` : ''}
-          ${item.unit ? `<span class="badge badge-unit">${escapeHtml(item.unit)}</span>` : ''}
+          ${typeLabel ? `<span class="badge badge-type">${escapeHtml(typeLabel)}</span>` : ''}
+          ${unitLabel ? `<span class="badge badge-unit">${escapeHtml(unitLabel)}</span>` : ''}
           ${id.startsWith('UNASSIGNED-') ? '<span class="badge" style="background:#7c3aed;color:#fff;">No location</span>' : ''}
           ${resultBadge}
         </div>
-        <div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>
+        ${virtual ? `<div class="item-scanned">Linked in: ${escapeHtml(virtual.via)}</div>` : `<div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>`}
       </div>
       <div class="item-actions">
         <button class="viewBtn" data-id="${escapeAttr(id)}">View</button>
