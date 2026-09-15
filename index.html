@@ -278,6 +278,8 @@
       <input type="text" id="extLocationInput" placeholder="e.g. Reformer Shelter NE Door">
       <label>Weight & Agent</label>
       <input type="text" id="extWeightAgentInput" placeholder="e.g. 9.5 lbs CleanGuard">
+      <label>Serial Number</label>
+      <input type="text" id="extSerialNumberInput" placeholder="e.g. printed on the manufacturer label">
       <label>General Inspection</label>
       <select id="extInspectionInput">
         <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
@@ -412,6 +414,8 @@
       </div>
       <label>Last Calibration</label>
       <input type="date" id="scbaLastCalibrationInput">
+      <label>Frame Serial Number</label>
+      <input type="text" id="scbaFrameSerialNumberInput" placeholder="e.g. printed on the frame label">
 
       <div class="subsection-label">Cylinder</div>
       <label>Cylinder RFID Tag</label>
@@ -432,6 +436,8 @@
           <input type="number" id="scbaPressureInput">
         </div>
       </div>
+      <label>Cylinder Serial Number</label>
+      <input type="text" id="scbaCylinderSerialNumberInput" placeholder="e.g. printed on the cylinder label">
 
       <div class="subsection-label">Masks</div>
       <label>L Mask RFID Tag</label>
@@ -498,6 +504,8 @@
           <input type="number" id="stdCylPressureInput">
         </div>
       </div>
+      <label>Serial Number</label>
+      <input type="text" id="stdCylSerialNumberInput" placeholder="e.g. printed on the cylinder label">
       <label>Comments</label>
       <textarea id="stdCylCommentsInput" rows="2"></textarea>
     </div>
@@ -514,6 +522,8 @@
       </div>
       <label>Last Calibration</label>
       <input type="date" id="stdFrameLastCalibrationInput">
+      <label>Serial Number</label>
+      <input type="text" id="stdFrameSerialNumberInput" placeholder="e.g. printed on the frame label">
       <label>Comments</label>
       <textarea id="stdFrameCommentsInput" rows="2"></textarea>
     </div>
@@ -1024,7 +1034,7 @@ document.getElementById('historyToggle').addEventListener('click', () => {
 // ---------- Modal ----------
 // ---------- Read-only View ----------
 const VIEW_FIELDS = {
-  'Extinguisher': [['Location','extLocation'],['Weight & Agent','extWeightAgent'],['Inspection','extInspection'],['Last Inspected','extLastInspected'],['Comments','extComments']],
+  'Extinguisher': [['Location','extLocation'],['Weight & Agent','extWeightAgent'],['Serial Number','extSerialNumber'],['Inspection','extInspection'],['Last Inspected','extLastInspected'],['Comments','extComments']],
   'Emergency Light': [['Location','lightLocation'],['Inspection','lightInspection'],['Last Inspected','lightLastInspected'],['Comments','lightComments']],
   'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
   'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
@@ -1033,14 +1043,14 @@ const VIEW_FIELDS = {
     ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
   'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
   'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
-    ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],
-    ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],
+    ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],['Frame Serial Number','scbaFrameSerialNumber'],
+    ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],['Cylinder Serial Number','scbaCylinderSerialNumber'],
     ['L Mask RFID','scbaLMaskId'],['L Mask Date','scbaLMaskExpDate'],
     ['M Mask RFID','scbaMMaskId'],['M Mask Date','scbaMMaskExpDate'],
     ['S Mask RFID','scbaSMaskId'],['S Mask Date','scbaSMaskExpDate'],
     ['Inspection','scbaInspection'],['Last Inspected','scbaLastInspected'],['Comments','scbaComments']],
-  'SCBA Cylinder': [['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Comments','stdCylComments']],
-  'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Comments','stdFrameComments']],
+  'SCBA Cylinder': [['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Comments','stdCylComments']],
+  'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Serial Number','stdFrameSerialNumber'],['Comments','stdFrameComments']],
   'SCBA Mask': [['Size','stdMaskSize'],['Mask RFID','stdMaskId'],['EXP Date','stdMaskExpDate'],['Comments','stdMaskComments']]
 };
 
@@ -1211,6 +1221,7 @@ function openModal(id) {
 
   document.getElementById('extLocationInput').value = existing?.extLocation || '';
   document.getElementById('extWeightAgentInput').value = existing?.extWeightAgent || '';
+  document.getElementById('extSerialNumberInput').value = existing?.extSerialNumber || '';
   document.getElementById('extInspectionInput').value = existing?.extInspection || '';
   document.getElementById('extLastInspectedInput').value = existing?.extLastInspected || '';
   document.getElementById('extCommentsInput').value = existing?.extComments || '';
@@ -1263,9 +1274,11 @@ function openModal(id) {
   document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
   document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
   document.getElementById('scbaLastCalibrationInput').value = existing?.scbaLastCalibration || '';
+  document.getElementById('scbaFrameSerialNumberInput').value = existing?.scbaFrameSerialNumber || '';
   document.getElementById('scbaCylinderIdInput').value = existing?.scbaCylinderId || '';
   document.getElementById('scbaLastHydroInput').value = existing?.scbaLastHydro || '';
   document.getElementById('scbaPressureInput').value = existing?.scbaPressure || '';
+  document.getElementById('scbaCylinderSerialNumberInput').value = existing?.scbaCylinderSerialNumber || '';
   document.getElementById('scbaLMaskIdInput').value = existing?.scbaLMaskId || '';
   document.getElementById('scbaLMaskExpDateInput').value = existing?.scbaLMaskExpDate || '';
   document.getElementById('scbaMMaskIdInput').value = existing?.scbaMMaskId || '';
@@ -1279,10 +1292,12 @@ function openModal(id) {
   document.getElementById('stdCylIdInput').value = existing?.stdCylId || '';
   document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || (!existing ? getKnownDateForComponent(id) : null) || '';
   document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
+  document.getElementById('stdCylSerialNumberInput').value = existing?.stdCylSerialNumber || '';
   document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
 
   document.getElementById('stdFrameIdInput').value = existing?.stdFrameId || '';
   document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || (!existing ? getKnownDateForComponent(id) : null) || '';
+  document.getElementById('stdFrameSerialNumberInput').value = existing?.stdFrameSerialNumber || '';
   document.getElementById('stdFrameCommentsInput').value = existing?.stdFrameComments || '';
 
   document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || (!existing ? getKnownSizeForComponent(id) : null) || 'Large';
@@ -1313,6 +1328,7 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     unit,
     extLocation: document.getElementById('extLocationInput').value.trim(),
     extWeightAgent: document.getElementById('extWeightAgentInput').value.trim(),
+    extSerialNumber: document.getElementById('extSerialNumberInput').value.trim(),
     extInspection: document.getElementById('extInspectionInput').value,
     extLastInspected: document.getElementById('extLastInspectedInput').value,
     extComments: document.getElementById('extCommentsInput').value.trim(),
@@ -1354,9 +1370,11 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
     scbaFrameId: document.getElementById('scbaFrameIdInput').value.trim(),
     scbaLastCalibration: document.getElementById('scbaLastCalibrationInput').value,
+    scbaFrameSerialNumber: document.getElementById('scbaFrameSerialNumberInput').value.trim(),
     scbaCylinderId: document.getElementById('scbaCylinderIdInput').value.trim(),
     scbaLastHydro: document.getElementById('scbaLastHydroInput').value,
     scbaPressure: document.getElementById('scbaPressureInput').value,
+    scbaCylinderSerialNumber: document.getElementById('scbaCylinderSerialNumberInput').value.trim(),
     scbaLMaskId: document.getElementById('scbaLMaskIdInput').value.trim(),
     scbaLMaskExpDate: document.getElementById('scbaLMaskExpDateInput').value,
     scbaMMaskId: document.getElementById('scbaMMaskIdInput').value.trim(),
@@ -1370,10 +1388,12 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     stdCylId: document.getElementById('stdCylIdInput').value.trim(),
     stdCylLastHydro: document.getElementById('stdCylLastHydroInput').value,
     stdCylPressure: document.getElementById('stdCylPressureInput').value,
+    stdCylSerialNumber: document.getElementById('stdCylSerialNumberInput').value.trim(),
     stdCylComments: document.getElementById('stdCylCommentsInput').value.trim(),
 
     stdFrameId: document.getElementById('stdFrameIdInput').value.trim(),
     stdFrameLastCalibration: document.getElementById('stdFrameLastCalibrationInput').value,
+    stdFrameSerialNumber: document.getElementById('stdFrameSerialNumberInput').value.trim(),
     stdFrameComments: document.getElementById('stdFrameCommentsInput').value.trim(),
 
     stdMaskSize: document.getElementById('stdMaskSizeInput').value,
@@ -1561,26 +1581,26 @@ document.getElementById('exportXlsxBtn').addEventListener('click', () => {
   const sheets = [];
   Array.from(units).sort().forEach(unit => {
     const extRows = allItems.filter(([, i]) => i.type === 'Extinguisher' && i.unit === unit)
-      .map(([id, i]) => [i.extLocation, i.extWeightAgent, id, i.extInspection, i.extComments, i.extLastInspected]);
+      .map(([id, i]) => [i.extLocation, i.extWeightAgent, id, i.extInspection, i.extComments, i.extLastInspected, i.extSerialNumber]);
     const lightRows = allItems.filter(([, i]) => i.type === 'Emergency Light' && i.unit === unit)
       .map(([id, i]) => [combinedLabel(id, i.lightLocation), i.lightInspection, i.lightComments, i.lightLastInspected]);
     const scbaRows = allItems.filter(([, i]) => i.type === 'SCBA Station' && i.unit === unit)
-      .map(([id, i]) => [combinedLabel(id, i.scbaCabinetLocation), i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration,
-        i.scbaCylinderId, i.scbaLastHydro, i.scbaInspection, i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaComments, i.scbaLastInspected]);
+      .map(([id, i]) => [combinedLabel(id, i.scbaCabinetLocation), i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration, i.scbaFrameSerialNumber,
+        i.scbaCylinderId, i.scbaLastHydro, i.scbaCylinderSerialNumber, i.scbaInspection, i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaComments, i.scbaLastInspected]);
 
     const maxRows = Math.max(extRows.length, lightRows.length, scbaRows.length);
     const header = [
-      'Location', 'Weight & Agent', 'Barcode', 'General inspection', 'Comments', 'Last inspected', '',
+      'Location', 'Weight & Agent', 'Barcode', 'General inspection', 'Comments', 'Last inspected', 'Serial Number', '',
       'Light barcode and location', 'General inspection', 'Comments', 'Last inspected', '',
-      'Cabinet barcode and location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Cylinder barcode',
-      'Last hydro', 'SCBA general inspection', 'L mask', 'M mask', 'S mask', 'Comments', 'Last inspected'
+      'Cabinet barcode and location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Frame Serial Number', 'Cylinder barcode',
+      'Last hydro', 'Cylinder Serial Number', 'SCBA general inspection', 'L mask', 'M mask', 'S mask', 'Comments', 'Last inspected'
     ];
     const rows = [header];
     for (let r = 0; r < maxRows; r++) {
       const row = new Array(header.length).fill('');
       const e = extRows[r]; if (e) for (let c = 0; c < e.length; c++) row[c] = e[c];
-      const l = lightRows[r]; if (l) for (let c = 0; c < l.length; c++) row[7 + c] = l[c];
-      const s = scbaRows[r]; if (s) for (let c = 0; c < s.length; c++) row[12 + c] = s[c];
+      const l = lightRows[r]; if (l) for (let c = 0; c < l.length; c++) row[8 + c] = l[c];
+      const s = scbaRows[r]; if (s) for (let c = 0; c < s.length; c++) row[13 + c] = s[c];
       rows.push(row);
     }
     if (rows.length > 1) sheets.push({ name: unit, rows });
@@ -1597,10 +1617,10 @@ document.getElementById('exportXlsxBtn').addEventListener('click', () => {
     ['Location', 'Car seal intact', 'Missing items', 'Box condition', 'Last inspected', 'Comments']);
   addSimpleSheet('SAR', 'SAR', ['sarLocation', 'sarId', 'sarInspection', 'sarLastInspected', 'sarComments'],
     ['Location', 'RFID/Barcode', 'General inspection', 'Last inspected', 'Comments']);
-  addSimpleSheet('SCBA Cylinders (standalone)', 'SCBA Cylinder', ['stdCylId', 'stdCylLastHydro', 'stdCylPressure', 'stdCylComments'],
-    ['Cylinder RFID', 'Last hydro', 'Pressure', 'Comments']);
-  addSimpleSheet('SCBA Frames (standalone)', 'SCBA Frame', ['stdFrameId', 'stdFrameLastCalibration', 'stdFrameComments'],
-    ['Frame RFID', 'Last calibration', 'Comments']);
+  addSimpleSheet('SCBA Cylinders (standalone)', 'SCBA Cylinder', ['stdCylId', 'stdCylLastHydro', 'stdCylPressure', 'stdCylSerialNumber', 'stdCylComments'],
+    ['Cylinder RFID', 'Last hydro', 'Pressure', 'Serial Number', 'Comments']);
+  addSimpleSheet('SCBA Frames (standalone)', 'SCBA Frame', ['stdFrameId', 'stdFrameLastCalibration', 'stdFrameSerialNumber', 'stdFrameComments'],
+    ['Frame RFID', 'Last calibration', 'Serial Number', 'Comments']);
   addSimpleSheet('SCBA Masks (standalone)', 'SCBA Mask', ['stdMaskSize', 'stdMaskId', 'stdMaskExpDate', 'stdMaskComments'],
     ['Size', 'Mask RFID', 'Calibration/EXP date', 'Comments']);
 
@@ -1636,19 +1656,19 @@ function csvEscape(v) {
 document.getElementById('exportBtn').addEventListener('click', () => {
   const header = [
     'Collection Point Barcode', 'Type', 'Unit',
-    'Ext Location', 'Ext Weight & Agent', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
+    'Ext Location', 'Ext Weight & Agent', 'Ext Serial Number', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
     'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
     'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
     'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
     'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab Masks', 'Mask Cab SAR Number', 'Mask Cab Box', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
     'SAR Location', 'SAR RFID/Barcode', 'SAR Inspection', 'SAR Last Inspected', 'SAR Comments',
     'SCBA Cabinet Location', 'SCBA Cabinet Condition',
-    'SCBA Frame RFID', 'SCBA Last Calibration',
-    'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure',
+    'SCBA Frame RFID', 'SCBA Last Calibration', 'SCBA Frame Serial Number',
+    'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure', 'SCBA Cylinder Serial Number',
     'SCBA L Mask RFID', 'SCBA L Mask Date', 'SCBA M Mask RFID', 'SCBA M Mask Date', 'SCBA S Mask RFID', 'SCBA S Mask Date',
     'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
-    'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Comments',
-    'Standalone Frame RFID', 'Standalone Frame Last Calibration', 'Standalone Frame Comments',
+    'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Serial Number', 'Standalone Cyl Comments',
+    'Standalone Frame RFID', 'Standalone Frame Last Calibration', 'Standalone Frame Serial Number', 'Standalone Frame Comments',
     'Standalone Mask Size', 'Standalone Mask RFID', 'Standalone Mask EXP Date', 'Standalone Mask Comments',
     'Scan Count', 'Created', 'Last Scanned'
   ];
@@ -1656,7 +1676,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   Object.entries(items).forEach(([id, i]) => {
     rows.push([
       id, i.type || '', i.unit || '',
-      i.extLocation || '', i.extWeightAgent || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
+      i.extLocation || '', i.extWeightAgent || '', i.extSerialNumber || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
       i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
       i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
       i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
@@ -1665,12 +1685,12 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
       i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
-      i.scbaFrameId || '', i.scbaLastCalibration || '',
-      i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '',
+      i.scbaFrameId || '', i.scbaLastCalibration || '', i.scbaFrameSerialNumber || '',
+      i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '', i.scbaCylinderSerialNumber || '',
       i.scbaLMaskId || '', i.scbaLMaskExpDate || '', i.scbaMMaskId || '', i.scbaMMaskExpDate || '', i.scbaSMaskId || '', i.scbaSMaskExpDate || '',
       i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
-      i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylComments || '',
-      i.stdFrameId || '', i.stdFrameLastCalibration || '', i.stdFrameComments || '',
+      i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylSerialNumber || '', i.stdCylComments || '',
+      i.stdFrameId || '', i.stdFrameLastCalibration || '', i.stdFrameSerialNumber || '', i.stdFrameComments || '',
       i.stdMaskSize || '', i.stdMaskId || '', i.stdMaskExpDate || '', i.stdMaskComments || '',
       (i.history || []).length,
       i.createdAt ? new Date(i.createdAt).toISOString() : '',
