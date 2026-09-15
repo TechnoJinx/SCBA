@@ -243,6 +243,7 @@
 
 <div class="bottom-bar">
   <button id="exportBtn">Export CSV</button>
+  <button id="exportXlsxBtn">Export XLSX</button>
   <button id="clearBtn">Clear All</button>
 </div>
 
@@ -1181,7 +1182,11 @@ function openModal(id) {
     : 'ID: ' + id;
 
   const regEntry = !existing ? equipmentRegistry[String(id).trim()] : null;
-  const regDefaultType = regEntry ? (regEntry.type === 'Frame' ? 'SCBA Frame' : (['Large', 'Medium', 'Small'].includes(regEntry.type) ? 'SCBA Mask' : null)) : null;
+  const regDefaultType = regEntry
+    ? (regEntry.type === 'Frame' ? 'SCBA Frame'
+      : regEntry.type === 'Cylinder' ? 'SCBA Cylinder'
+      : ['Large', 'Medium', 'Small'].includes(regEntry.type) ? 'SCBA Mask' : null)
+    : null;
   const defaultType = existing?.type || regDefaultType || 'Extinguisher';
   setType(defaultType);
   populateUnitSelect(existing?.unit);
@@ -1254,7 +1259,7 @@ function openModal(id) {
   document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
 
   document.getElementById('stdCylIdInput').value = existing?.stdCylId || '';
-  document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || '';
+  document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || (!existing ? getKnownDateForComponent(id) : null) || '';
   document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
   document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
 
@@ -1414,6 +1419,210 @@ document.getElementById('deleteItemBtn').addEventListener('click', () => {
 document.getElementById('searchInput').addEventListener('input', renderList);
 document.getElementById('typeFilter').addEventListener('change', renderList);
 document.getElementById('unitFilter').addEventListener('change', renderList);
+
+// ---------- XLSX export (matches the original per-Unit workbook layout) ----------
+// A minimal, dependency-free XLSX writer: builds a valid ZIP + OOXML spreadsheet entirely
+// in-page. No external library — keeps the strict Content-Security-Policy intact and avoids
+// the reliability issues an external CDN dependency caused previously.
+const XLSX_CRC_TABLE = (() => {
+  const table = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+function xlsxCrc32(buf) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) crc = XLSX_CRC_TABLE[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function xlsxStrToBytes(str) { return new TextEncoder().encode(str); }
+function xlsxU16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+function xlsxU32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
+
+function xlsxBuildZip(files) {
+  const localParts = [], centralParts = [];
+  let offset = 0;
+  const dosTime = 0, dosDate = 0x21;
+  for (const f of files) {
+    const nameBytes = xlsxStrToBytes(f.name);
+    const data = f.data;
+    const crc = xlsxCrc32(data);
+    const size = data.length;
+    const localHeader = [
+      ...xlsxU32(0x04034b50), ...xlsxU16(20), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU16(dosTime), ...xlsxU16(dosDate),
+      ...xlsxU32(crc), ...xlsxU32(size), ...xlsxU32(size),
+      ...xlsxU16(nameBytes.length), ...xlsxU16(0)
+    ];
+    const localEntry = new Uint8Array(localHeader.length + nameBytes.length + data.length);
+    localEntry.set(localHeader, 0);
+    localEntry.set(nameBytes, localHeader.length);
+    localEntry.set(data, localHeader.length + nameBytes.length);
+    localParts.push(localEntry);
+    const centralHeader = [
+      ...xlsxU32(0x02014b50), ...xlsxU16(20), ...xlsxU16(20), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU16(dosTime), ...xlsxU16(dosDate),
+      ...xlsxU32(crc), ...xlsxU32(size), ...xlsxU32(size),
+      ...xlsxU16(nameBytes.length), ...xlsxU16(0), ...xlsxU16(0), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU32(0), ...xlsxU32(offset)
+    ];
+    const centralEntry = new Uint8Array(centralHeader.length + nameBytes.length);
+    centralEntry.set(centralHeader, 0);
+    centralEntry.set(nameBytes, centralHeader.length);
+    centralParts.push(centralEntry);
+    offset += localEntry.length;
+  }
+  const centralStart = offset;
+  let centralSize = 0;
+  for (const c of centralParts) centralSize += c.length;
+  const endRecord = new Uint8Array([
+    ...xlsxU32(0x06054b50), ...xlsxU16(0), ...xlsxU16(0),
+    ...xlsxU16(files.length), ...xlsxU16(files.length),
+    ...xlsxU32(centralSize), ...xlsxU32(centralStart), ...xlsxU16(0)
+  ]);
+  const out = new Uint8Array(offset + centralSize + endRecord.length);
+  let pos = 0;
+  for (const l of localParts) { out.set(l, pos); pos += l.length; }
+  for (const c of centralParts) { out.set(c, pos); pos += c.length; }
+  out.set(endRecord, pos);
+  return out;
+}
+function xlsxEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function xlsxColLetter(n) {
+  let s = ''; n++;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+function xlsxSafeSheetName(name, usedNames) {
+  let base = String(name).replace(/[\\/*?:[\]]/g, ' ').trim().slice(0, 31) || 'Sheet';
+  let candidate = base, n = 1;
+  while (usedNames.has(candidate)) { candidate = (base.slice(0, 28) + '_' + (++n)); }
+  usedNames.add(candidate);
+  return candidate;
+}
+function xlsxWorksheetXml(rows) {
+  let rowsXml = '';
+  rows.forEach((row, rIdx) => {
+    const r = rIdx + 1;
+    let cellsXml = '';
+    row.forEach((val, cIdx) => {
+      if (val === null || val === undefined || val === '') return;
+      const ref = xlsxColLetter(cIdx) + r;
+      if (typeof val === 'number' && isFinite(val)) {
+        cellsXml += `<c r="${ref}"><v>${val}</v></c>`;
+      } else {
+        cellsXml += `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xlsxEscape(val)}</t></is></c>`;
+      }
+    });
+    if (cellsXml) rowsXml += `<row r="${r}">${cellsXml}</row>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowsXml}</sheetData></worksheet>`;
+}
+function buildXlsxFile(sheets) {
+  // sheets: [{name, rows: [[cell,...], ...]}]
+  const usedNames = new Set();
+  const safeSheets = sheets.map(s => ({ name: xlsxSafeSheetName(s.name, usedNames), rows: s.rows }));
+  const files = [];
+  files.push({ name: '[Content_Types].xml', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${safeSheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`) });
+  files.push({ name: '_rels/.rels', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`) });
+  files.push({ name: 'xl/workbook.xml', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safeSheets.map((s, i) => `<sheet name="${xlsxEscape(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`) });
+  files.push({ name: 'xl/_rels/workbook.xml.rels', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${safeSheets.map((s, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}</Relationships>`) });
+  safeSheets.forEach((s, i) => {
+    files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: xlsxStrToBytes(xlsxWorksheetXml(s.rows)) });
+  });
+  return xlsxBuildZip(files);
+}
+
+function combinedLabel(id, text) {
+  return text ? (id + ' ' + text) : id;
+}
+
+document.getElementById('exportXlsxBtn').addEventListener('click', () => {
+  const allItems = Object.entries(items);
+
+  // ---- Per-unit sheets, matching the original workbook's 3 side-by-side column blocks ----
+  const units = new Set();
+  allItems.forEach(([id, i]) => {
+    if ((i.type === 'Extinguisher' || i.type === 'Emergency Light' || i.type === 'SCBA Station') && i.unit) units.add(i.unit);
+  });
+
+  const sheets = [];
+  Array.from(units).sort().forEach(unit => {
+    const extRows = allItems.filter(([, i]) => i.type === 'Extinguisher' && i.unit === unit)
+      .map(([id, i]) => [i.extLocation, i.extWeightAgent, id, i.extInspection, i.extComments, i.extLastInspected]);
+    const lightRows = allItems.filter(([, i]) => i.type === 'Emergency Light' && i.unit === unit)
+      .map(([id, i]) => [combinedLabel(id, i.lightLocation), i.lightInspection, i.lightComments, i.lightLastInspected]);
+    const scbaRows = allItems.filter(([, i]) => i.type === 'SCBA Station' && i.unit === unit)
+      .map(([id, i]) => [combinedLabel(id, i.scbaCabinetLocation), i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration,
+        i.scbaCylinderId, i.scbaLastHydro, i.scbaInspection, i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaComments, i.scbaLastInspected]);
+
+    const maxRows = Math.max(extRows.length, lightRows.length, scbaRows.length);
+    const header = [
+      'Location', 'Weight & Agent', 'Barcode', 'General inspection', 'Comments', 'Last inspected', '',
+      'Light barcode and location', 'General inspection', 'Comments', 'Last inspected', '',
+      'Cabinet barcode and location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Cylinder barcode',
+      'Last hydro', 'SCBA general inspection', 'L mask', 'M mask', 'S mask', 'Comments', 'Last inspected'
+    ];
+    const rows = [header];
+    for (let r = 0; r < maxRows; r++) {
+      const row = new Array(header.length).fill('');
+      const e = extRows[r]; if (e) for (let c = 0; c < e.length; c++) row[c] = e[c];
+      const l = lightRows[r]; if (l) for (let c = 0; c < l.length; c++) row[7 + c] = l[c];
+      const s = scbaRows[r]; if (s) for (let c = 0; c < s.length; c++) row[12 + c] = s[c];
+      rows.push(row);
+    }
+    if (rows.length > 1) sheets.push({ name: unit, rows });
+  });
+
+  // ---- Separate sheets for equipment types that weren't part of the original workbook ----
+  function addSimpleSheet(name, type, columns, headers) {
+    const rows = allItems.filter(([, i]) => i.type === type).map(([id, i]) => columns.map(c => c === '__id__' ? id : i[c]));
+    if (rows.length) sheets.push({ name, rows: [headers, ...rows] });
+  }
+  addSimpleSheet('Eyewash Stations', 'Eyewash Station', ['eyewashLocation', 'eyewashInspection', 'eyewashLastService', 'eyewashLastInspected', 'eyewashComments'],
+    ['Location', 'General inspection', 'Last service', 'Last inspected', 'Comments']);
+  addSimpleSheet('Spill Kits', 'Spill Kit', ['spillLocation', 'spillSeal', 'spillMissingItems', 'spillBoxCondition', 'spillLastInspected', 'spillComments'],
+    ['Location', 'Car seal intact', 'Missing items', 'Box condition', 'Last inspected', 'Comments']);
+  addSimpleSheet('SAR', 'SAR', ['sarLocation', 'sarId', 'sarInspection', 'sarLastInspected', 'sarComments'],
+    ['Location', 'RFID/Barcode', 'General inspection', 'Last inspected', 'Comments']);
+  addSimpleSheet('SCBA Cylinders (standalone)', 'SCBA Cylinder', ['stdCylId', 'stdCylLastHydro', 'stdCylPressure', 'stdCylComments'],
+    ['Cylinder RFID', 'Last hydro', 'Pressure', 'Comments']);
+  addSimpleSheet('SCBA Frames (standalone)', 'SCBA Frame', ['stdFrameId', 'stdFrameLastCalibration', 'stdFrameComments'],
+    ['Frame RFID', 'Last calibration', 'Comments']);
+  addSimpleSheet('SCBA Masks (standalone)', 'SCBA Mask', ['stdMaskSize', 'stdMaskId', 'stdMaskExpDate', 'stdMaskComments'],
+    ['Size', 'Mask RFID', 'Calibration/EXP date', 'Comments']);
+
+  const maskCabRows = allItems.filter(([, i]) => i.type === 'Mask Cabinet').map(([id, i]) => [
+    i.unit, combinedLabel(id, i.maskCabLocation), i.maskCabCondition,
+    (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+    i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments
+  ]);
+  if (maskCabRows.length) sheets.push({ name: 'Mask Cabinets', rows: [
+    ['Unit', 'Cabinet barcode and location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
+    ...maskCabRows
+  ]});
+
+  if (!sheets.length) sheets.push({ name: 'Sheet1', rows: [['No items yet']] });
+
+  const bytes = buildXlsxFile(sheets);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'safety_equipment_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('XLSX downloaded — ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's'));
+});
 
 // ---------- Export (flat CSV, no external dependencies) ----------
 function csvEscape(v) {
