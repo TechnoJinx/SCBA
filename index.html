@@ -229,6 +229,7 @@
   <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
   <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
   <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
+  <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -781,6 +782,21 @@ function itemInspectionResult(item) {
   if (item.type === 'SCBA Station') return item.scbaInspection || '';
   return '';
 }
+function equipmentSnapshot(d) {
+  const snap = [];
+  if (d.type === 'SCBA Station') {
+    if (d.scbaFrameId) snap.push(['Frame', d.scbaFrameId]);
+    if (d.scbaCylinderId) snap.push(['Cylinder', d.scbaCylinderId]);
+    if (d.scbaLMaskId) snap.push(['L Mask', d.scbaLMaskId]);
+    if (d.scbaMMaskId) snap.push(['M Mask', d.scbaMMaskId]);
+    if (d.scbaSMaskId) snap.push(['S Mask', d.scbaSMaskId]);
+  } else if (d.type === 'Mask Cabinet') {
+    (d.masks || []).filter(m => m.id).forEach(m => snap.push([(m.size || '') + ' Mask', m.id]));
+    if (d.maskCabSarNumber) snap.push(['SAR', d.maskCabSarNumber]);
+  }
+  return snap;
+}
+
 function itemSummaryLine(item) {
   if (item.type === 'Extinguisher') {
     const p = []; if (item.extWeightAgent) p.push(item.extWeightAgent); if (item.extLastInspected) p.push('Inspected ' + item.extLastInspected);
@@ -990,9 +1006,10 @@ function renderHistory(item) {
     return `
     <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
       <div style="display:flex;justify-content:space-between;width:100%;">
-        <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span class="hist-loc">${h.note ? '📅 ' : ''}${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
         <span>${new Date(h.timestamp).toLocaleString()}</span>
       </div>
+      ${h.note ? `<div style="font-size:11px;color:#fbbf24;">${escapeHtml(h.note)}</div>` : ''}
       ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
     </div>
   `; }).join('');
@@ -1076,9 +1093,10 @@ function renderViewHistory(item) {
     return `
     <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
       <div style="display:flex;justify-content:space-between;width:100%;">
-        <span class="hist-loc">${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span class="hist-loc">${h.note ? '📅 ' : ''}${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
         <span>${new Date(h.timestamp).toLocaleString()}</span>
       </div>
+      ${h.note ? `<div style="font-size:11px;color:#fbbf24;">${escapeHtml(h.note)}</div>` : ''}
       ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
     </div>
   `; }).join('');
@@ -1371,21 +1389,6 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
   if (draft.type === 'SCBA Cylinder' && !draft.stdCylId) draft.stdCylId = currentId;
   if (draft.type === 'SCBA Frame' && !draft.stdFrameId) draft.stdFrameId = currentId;
   if (draft.type === 'SCBA Mask' && !draft.stdMaskId) draft.stdMaskId = currentId;
-
-  function equipmentSnapshot(d) {
-    const snap = [];
-    if (d.type === 'SCBA Station') {
-      if (d.scbaFrameId) snap.push(['Frame', d.scbaFrameId]);
-      if (d.scbaCylinderId) snap.push(['Cylinder', d.scbaCylinderId]);
-      if (d.scbaLMaskId) snap.push(['L Mask', d.scbaLMaskId]);
-      if (d.scbaMMaskId) snap.push(['M Mask', d.scbaMMaskId]);
-      if (d.scbaSMaskId) snap.push(['S Mask', d.scbaSMaskId]);
-    } else if (d.type === 'Mask Cabinet') {
-      (d.masks || []).filter(m => m.id).forEach(m => snap.push([(m.size || '') + ' Mask', m.id]));
-      if (d.maskCabSarNumber) snap.push(['SAR', d.maskCabSarNumber]);
-    }
-    return snap;
-  }
 
   const now = Date.now();
   const existing = items[currentId];
@@ -1860,6 +1863,61 @@ document.getElementById('manualEntryLink').addEventListener('click', () => {
 document.getElementById('addUnassignedLink').addEventListener('click', () => {
   const id = 'UNASSIGNED-' + Date.now().toString(36).toUpperCase();
   openModal(id);
+});
+
+// ---------- Start a new inspection month ----------
+// Fields that represent "this month's" inspection status/comments, cleared for a fresh cycle.
+// Equipment links (RFID), calibration/hydro dates, and locations are deliberately NOT included —
+// those describe the equipment itself, not the monthly inspection cycle.
+const MONTHLY_RESET_FIELDS = {
+  'Extinguisher': ['extInspection', 'extLastInspected', 'extComments'],
+  'Emergency Light': ['lightInspection', 'lightLastInspected', 'lightComments'],
+  'Eyewash Station': ['eyewashInspection', 'eyewashLastInspected', 'eyewashComments'],
+  'Spill Kit': ['spillSeal', 'spillMissingItems', 'spillBoxCondition', 'spillLastInspected', 'spillComments'],
+  'Mask Cabinet': ['maskCabCondition', 'maskCabBox', 'maskCabInspection', 'maskCabLastInspected', 'maskCabComments'],
+  'SAR': ['sarInspection', 'sarLastInspected', 'sarComments'],
+  'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments']
+};
+
+document.getElementById('startNewMonthLink').addEventListener('click', async () => {
+  const count = Object.values(items).filter(i => MONTHLY_RESET_FIELDS[i.type]).length;
+  if (!count) { showToast('No inspectable equipment to reset yet'); return; }
+
+  const proceed = confirm(
+    'Start a new inspection month for ' + count + ' item(s)?\n\n' +
+    'This will:\n' +
+    '1) Download an XLSX backup of this month\'s results\n' +
+    '2) Save each item\'s current Pass/Fail status into its own history\n' +
+    '3) Clear Inspection / Last Inspected / Comments so you can re-inspect fresh\n\n' +
+    'Equipment links (Frame/Cylinder/Mask RFID), calibration/hydro dates, and locations ' +
+    'are NOT touched. This cannot be undone. Continue?'
+  );
+  if (!proceed) return;
+
+  document.getElementById('exportXlsxBtn').click();
+  await new Promise(r => setTimeout(r, 400));
+
+  const now = Date.now();
+  let resetCount = 0;
+  Object.entries(items).forEach(([id, item]) => {
+    const fields = MONTHLY_RESET_FIELDS[item.type];
+    if (!fields) return;
+    const history = item.history ? item.history.slice() : [];
+    history.push({
+      location: itemDisplayName(item, id),
+      result: itemInspectionResult(item),
+      timestamp: now,
+      equipment: equipmentSnapshot(item),
+      note: 'End-of-month snapshot'
+    });
+    const updated = { ...item, history, updatedAt: now };
+    fields.forEach(f => { updated[f] = ''; });
+    items[id] = updated;
+    resetCount++;
+  });
+  saveItems();
+  renderList();
+  showToast('New month started — ' + resetCount + ' item(s) reset, full history preserved');
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
