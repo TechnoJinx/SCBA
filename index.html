@@ -1914,7 +1914,11 @@ function scanLoop() {
         const input = document.getElementById(targetId);
         if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
         applyKnownInfoIfAny(value, sizeTargetId, dateTargetId);
-        showToast('Scanned: ' + value);
+        const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
+        const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
+        copyForExcel([value, finalDate, finalSize]).then(copied => {
+          showToast('Scanned: ' + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
+        });
         if (targetId === 'historyLookupInput') renderComponentHistory(value);
         return;
       }
@@ -2174,6 +2178,22 @@ function readTextRecord(message) {
 }
 function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
+// Copies scanned values to the clipboard, tab-separated — Excel/Sheets treat a tab in pasted
+// text as a column break, so pasting once into a cell spreads multiple values across a row.
+// Returns true on success so callers can fold a confirmation into their own toast message.
+async function copyForExcel(parts) {
+  const joined = parts.filter(p => p !== null && p !== undefined && p !== '').join('\t');
+  if (!joined) return false;
+  try {
+    await navigator.clipboard.writeText(joined);
+    return true;
+  } catch (e) {
+    // Clipboard access can be blocked by browser/device policy — fail quietly, the on-screen
+    // value is still there to copy manually if needed.
+    return false;
+  }
+}
+
 async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
   if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — enter it manually');
@@ -2214,7 +2234,11 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
       }
       // Fall back to the known-equipment lookup for whichever of size/date the tag didn't carry itself
       applyKnownInfoIfAny(value, (sizeTargetId && !writtenSize) ? sizeTargetId : null, (dateTargetId && !writtenDate) ? dateTargetId : null);
-      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (writtenDate ? ' · Date: ' + writtenDate : '') + (writtenSize ? ' · Size: ' + writtenSize : ''));
+      const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
+      const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
+      copyForExcel([value, finalDate, finalSize]).then(copied => {
+        showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
+      });
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
     });
   } catch (err) {
