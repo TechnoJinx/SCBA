@@ -184,6 +184,12 @@
   }
   .toast.show { opacity: 1; }
 
+  #nfcFlash {
+    position: fixed; inset: 0; background: #4ade80; opacity: 0;
+    pointer-events: none; z-index: 500; transition: opacity 0.12s ease-out;
+  }
+  #nfcFlash.show { opacity: 0.55; transition: opacity 0.04s ease-out; }
+
   .scanner-overlay {
     position: fixed; inset: 0; background: #000; display: none;
     flex-direction: column; z-index: 300;
@@ -600,6 +606,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="nfcFlash"></div>
 
 <script>
 const STORAGE_KEY = 'safety_tracker_items_v6';
@@ -2121,7 +2128,7 @@ async function startNfcEntryScanning() {
       const writtenId = readTextRecord(event.message);
       const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
-      if (navigator.vibrate) navigator.vibrate(80);
+      flashNfcSuccess();
       stopNfcEntryScanning();
       const matchId = findMatchingId(value);
       if (matchId && matchId !== value) {
@@ -2181,6 +2188,16 @@ function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 // Copies scanned values to the clipboard, tab-separated — Excel/Sheets treat a tab in pasted
 // text as a column break, so pasting once into a cell spreads multiple values across a row.
 // Returns true on success so callers can fold a confirmation into their own toast message.
+// Unmistakable confirmation that a tag was actually read — a bright full-screen flash plus
+// a distinct double-pulse vibration, so it's obvious even if you're not sure the scan "took"
+// (useful when testing a new/unknown chip, not just during normal day-to-day use).
+function flashNfcSuccess() {
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+  const flash = document.getElementById('nfcFlash');
+  flash.classList.add('show');
+  setTimeout(() => { flash.classList.remove('show'); }, 180);
+}
+
 async function copyForExcel(parts) {
   const joined = parts.filter(p => p !== null && p !== undefined && p !== '').join('\t');
   if (!joined) return false;
@@ -2217,7 +2234,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
       const writtenSize = textRecords[2] || null;
       const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
-      if (navigator.vibrate) navigator.vibrate(60);
+      flashNfcSuccess();
       const input = document.getElementById(targetInputId);
       if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
       if (dateTargetId && writtenDate) {
