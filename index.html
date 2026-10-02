@@ -239,6 +239,8 @@
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
   <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
+  <button type="button" class="manual-link" id="uploadMonthlyLink">📥 Import monthly inspection results</button>
+  <input type="file" id="monthlyFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -2003,7 +2005,13 @@ function xlsxParseSharedStrings(xmlText) {
 }
 function xlsxParseWorksheetRows(xmlText, sharedStrings) {
   const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
-  return [...doc.getElementsByTagName('row')].map(rowEl => {
+  const rows = [];
+  [...doc.getElementsByTagName('row')].forEach(rowEl => {
+    // Excel omits <row> elements for entirely blank rows, so the row's own "r" attribute
+    // (its real 1-based row number) must be used as the array index — otherwise every row
+    // after a gap silently shifts out of alignment with its true row number.
+    const rAttr = rowEl.getAttribute('r');
+    const rowIndex = rAttr ? parseInt(rAttr, 10) - 1 : rows.length;
     const row = [];
     [...rowEl.children].filter(c => c.tagName === 'c').forEach(c => {
       const idx = xlsxColLetterToIndex(c.getAttribute('r') || '');
@@ -2025,8 +2033,103 @@ function xlsxParseWorksheetRows(xmlText, sharedStrings) {
       }
       row[idx] = value;
     });
-    return row;
+    rows[rowIndex] = row;
   });
+  return rows;
+}
+
+// ---------- Multi-sheet workbook support (for importing the Monthly inspection workbook) ----------
+function xlsxListWorksheets(workbookXml, relsXml) {
+  const wbDoc = new DOMParser().parseFromString(workbookXml, 'application/xml');
+  const sheets = [...wbDoc.getElementsByTagName('sheet')].map(s => ({
+    name: s.getAttribute('name'),
+    rId: s.getAttribute('r:id') || (s.getAttributeNS ? s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') : null)
+  }));
+  const relsDoc = new DOMParser().parseFromString(relsXml, 'application/xml');
+  const relMap = {};
+  [...relsDoc.getElementsByTagName('Relationship')].forEach(r => { relMap[r.getAttribute('Id')] = r.getAttribute('Target'); });
+  return sheets.map(s => ({ name: s.name, path: 'xl/' + relMap[s.rId] }));
+}
+function xlsxFindHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i] || [];
+    if (row.some(c => c && String(c).trim().toLowerCase().startsWith('barcode'))) return i;
+  }
+  return -1;
+}
+function xlsxFindCol(headerRow, matchFn) {
+  for (let c = 0; c < headerRow.length; c++) {
+    if (headerRow[c] && matchFn(String(headerRow[c]).trim().toLowerCase())) return c;
+  }
+  return -1;
+}
+function xlsxCleanBarcode(raw) {
+  if (!raw) return '';
+  return String(raw).trim().replace(/\*+$/, '').trim();
+}
+function xlsxSplitCombined(raw) {
+  // Real-world sheets mix delimiters inconsistently — some rows use "*" between ID and
+  // location, others use a plain space. Whichever appears first in the string wins.
+  if (!raw) return { id: '', rest: '' };
+  const s = String(raw).trim();
+  const starIdx = s.indexOf('*');
+  const spaceMatch = s.match(/\s/);
+  const spaceIdx = spaceMatch ? spaceMatch.index : -1;
+  let splitAt = -1;
+  if (starIdx !== -1 && (spaceIdx === -1 || starIdx < spaceIdx)) splitAt = starIdx;
+  else if (spaceIdx !== -1) splitAt = spaceIdx;
+  if (splitAt === -1) return { id: xlsxCleanBarcode(s), rest: '' };
+  return { id: xlsxCleanBarcode(s.slice(0, splitAt)), rest: s.slice(splitAt + 1).trim() };
+}
+const MONTHLY_SKIP_SHEETS = ['portables & weeklies', 'spill kits', 'incident response equipment'];
+const MONTHLY_VALID_RESULTS = new Set(['pass', 'fail', 'n/a', 'na']);
+
+async function parseMonthlyWorkbook(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const rootEntries = await xlsxReadZipEntries(arrayBuffer, ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/sharedStrings.xml']);
+  if (!rootEntries['xl/workbook.xml'] || !rootEntries['xl/_rels/workbook.xml.rels']) throw new Error('Could not find workbook structure in this file');
+  const workbookXml = new TextDecoder().decode(rootEntries['xl/workbook.xml']);
+  const relsXml = new TextDecoder().decode(rootEntries['xl/_rels/workbook.xml.rels']);
+  const sharedXml = rootEntries['xl/sharedStrings.xml'] ? new TextDecoder().decode(rootEntries['xl/sharedStrings.xml']) : null;
+  const sharedStrings = xlsxParseSharedStrings(sharedXml);
+  const worksheets = xlsxListWorksheets(workbookXml, relsXml);
+
+  const sheetPaths = worksheets.filter(w => !MONTHLY_SKIP_SHEETS.includes(w.name.trim().toLowerCase())).map(w => w.path);
+  const sheetEntries = await xlsxReadZipEntries(arrayBuffer, sheetPaths);
+
+  const updates = { ext: [], light: [], scba: [] };
+  for (const ws of worksheets) {
+    const cleanName = ws.name.trim().toLowerCase();
+    if (MONTHLY_SKIP_SHEETS.includes(cleanName)) continue;
+    const xml = sheetEntries[ws.path];
+    if (!xml) continue;
+    const rows = xlsxParseWorksheetRows(new TextDecoder().decode(xml), sharedStrings);
+    const headerIdx = xlsxFindHeaderRow(rows);
+    if (headerIdx === -1) continue;
+    const header = rows[headerIdx];
+
+    const extBarcodeCol = xlsxFindCol(header, h => h === 'barcode:' || h === 'barcode');
+    const lightCol = xlsxFindCol(header, h => h.startsWith('light barcode'));
+    const scbaCol = xlsxFindCol(header, h => h.startsWith('cabinet barcode'));
+    const scbaInspCol = xlsxFindCol(header, h => h.startsWith('scba general inspection'));
+
+    for (let r = headerIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      if (extBarcodeCol !== -1 && row[extBarcodeCol]) {
+        const id = xlsxCleanBarcode(row[extBarcodeCol]);
+        if (id) updates.ext.push({ id, inspection: row[extBarcodeCol + 1], comments: row[extBarcodeCol + 2] });
+      }
+      if (lightCol !== -1 && row[lightCol]) {
+        const { id } = xlsxSplitCombined(row[lightCol]);
+        if (id) updates.light.push({ id, inspection: row[lightCol + 1], comments: row[lightCol + 2] });
+      }
+      if (scbaCol !== -1 && row[scbaCol] && scbaInspCol !== -1) {
+        const { id } = xlsxSplitCombined(row[scbaCol]);
+        if (id) updates.scba.push({ id, condition: row[scbaCol + 1], inspection: row[scbaInspCol], comments: row[scbaInspCol + 4] });
+      }
+    }
+  }
+  return updates;
 }
 
 async function parseCalibrationXlsx(file) {
@@ -2351,6 +2454,111 @@ document.getElementById('calibrationFileInput').addEventListener('change', async
 
   saveEquipmentRegistry();
   showToast('Calibration list updated — ' + added + ' added, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : ''));
+});
+
+// ---------- Import the Monthly inspection workbook (Extinguisher/Light/SCBA Pass-Fail results) ----------
+function findItemIdWithDupFallback(id, type) {
+  if (items[id] && items[id].type === type) return id;
+  const dupId = id + '-DUP-EXT';
+  if (items[dupId] && items[dupId].type === type) return dupId;
+  return null;
+}
+function resultIsValid(v) {
+  return v !== null && v !== undefined && MONTHLY_VALID_RESULTS.has(String(v).trim().toLowerCase());
+}
+
+document.getElementById('uploadMonthlyLink').addEventListener('click', () => {
+  if (typeof DecompressionStream === 'undefined') {
+    showToast('Your browser doesn\'t support reading Excel files directly — try a recent Chrome');
+    return;
+  }
+  document.getElementById('monthlyFileInput').click();
+});
+
+document.getElementById('monthlyFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  if (!confirm(
+    'Import ' + file.name + '?\n\n' +
+    'For every Extinguisher, Light, and SCBA Station barcode this file matches, this will:\n' +
+    '• Set Inspection to Pass/Fail where the file has a real result\n' +
+    '• Leave Inspection untouched where the cell doesn\'t have a valid Pass/Fail (e.g. a barcode was scanned into the wrong cell)\n' +
+    '• Update Comments wherever the file has any, independent of the above\n' +
+    '• Last Inspected is NOT touched\n\n' +
+    'This reads data already recorded in the file — it does not scan anything. Continue?'
+  )) return;
+
+  showToast('Reading ' + file.name + '…');
+  let updates;
+  try {
+    updates = await parseMonthlyWorkbook(file);
+  } catch (err) {
+    alert('Could not read that file: ' + (err && err.message ? err.message : 'unknown error'));
+    return;
+  }
+
+  const now = Date.now();
+  const stats = { ext: { result: 0, commentsOnly: 0, notFound: 0 }, light: { result: 0, commentsOnly: 0, notFound: 0 }, scba: { result: 0, commentsOnly: 0, notFound: 0 } };
+
+  function applyUpdate(group, matchId, fields) {
+    const item = items[matchId];
+    const history = item.history ? item.history.slice() : [];
+    let changed = false;
+    let gotResult = false;
+    Object.entries(fields).forEach(([field, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      item[field] = value;
+      changed = true;
+      if (field.toLowerCase().includes('inspection') || field.toLowerCase().includes('condition')) gotResult = true;
+    });
+    if (changed) {
+      history.push({
+        location: itemDisplayName(item, matchId), result: itemInspectionResult(item), timestamp: now,
+        equipment: equipmentSnapshot(item), note: 'Imported from ' + file.name
+      });
+      item.history = history;
+      item.updatedAt = now;
+      if (gotResult) stats[group].result++; else stats[group].commentsOnly++;
+    }
+  }
+
+  updates.ext.forEach(u => {
+    const matchId = findItemIdWithDupFallback(u.id, 'Extinguisher');
+    if (!matchId) { stats.ext.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.inspection)) fields.extInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.extComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('ext', matchId, fields); else stats.ext.notFound += 0;
+  });
+  updates.light.forEach(u => {
+    const matchId = items[u.id] && items[u.id].type === 'Emergency Light' ? u.id : null;
+    if (!matchId) { stats.light.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.inspection)) fields.lightInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.lightComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('light', matchId, fields);
+  });
+  updates.scba.forEach(u => {
+    const matchId = items[u.id] && items[u.id].type === 'SCBA Station' ? u.id : null;
+    if (!matchId) { stats.scba.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.condition)) fields.scbaCabinetCondition = String(u.condition).trim();
+    if (resultIsValid(u.inspection)) fields.scbaInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.scbaComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('scba', matchId, fields);
+  });
+
+  saveItems();
+  renderList();
+
+  alert(
+    'Import complete.\n\n' +
+    'Extinguishers: ' + stats.ext.result + ' updated with a result, ' + stats.ext.commentsOnly + ' comments-only, ' + stats.ext.notFound + ' not found in the app\n' +
+    'Lights: ' + stats.light.result + ' updated with a result, ' + stats.light.commentsOnly + ' comments-only, ' + stats.light.notFound + ' not found in the app\n' +
+    'SCBA Stations: ' + stats.scba.result + ' updated with a result, ' + stats.scba.commentsOnly + ' comments-only, ' + stats.scba.notFound + ' not found in the app'
+  );
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
