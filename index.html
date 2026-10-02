@@ -236,6 +236,7 @@
   <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
   <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
+  <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -605,6 +606,20 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="previousMonthsOverlay">
+  <div class="modal">
+    <h2>Previous Months</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">
+      Each time you start a new inspection month, a snapshot is saved here — you can come back
+      anytime and re-download that month's XLSX, even much later.
+    </p>
+    <div id="previousMonthsList" style="margin-top:12px;"></div>
+    <div class="modal-buttons">
+      <button id="previousMonthsCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div id="nfcFlash"></div>
 
@@ -723,6 +738,61 @@ function loadEquipmentRegistry() {
   catch (e) { equipmentRegistry = {}; }
 }
 function saveEquipmentRegistry() { localStorage.setItem(EQUIPMENT_REGISTRY_KEY, JSON.stringify(equipmentRegistry)); }
+
+// ---------- Monthly archive storage (IndexedDB) ----------
+// Each "Start new month" run snapshots the full items object here, keyed by when it was
+// archived. Uses IndexedDB rather than localStorage because localStorage's ~5-10MB quota
+// would fill up after just a few months of full-dataset snapshots; IndexedDB has much more
+// headroom and stores structured data natively without needing to serialize to a string.
+function openArchiveDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('safety_tracker_archives', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('months')) {
+        db.createObjectStore('months', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveMonthlyArchive(label, itemsSnapshot) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readwrite');
+    tx.objectStore('months').put({ id: Date.now(), label, timestamp: Date.now(), items: itemsSnapshot });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function listMonthlyArchives() {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readonly');
+    const req = tx.objectStore('months').getAll();
+    req.onsuccess = () => resolve(req.result.sort((a, b) => b.timestamp - a.timestamp));
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getMonthlyArchive(id) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readonly');
+    const req = tx.objectStore('months').get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function deleteMonthlyArchive(id) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readwrite');
+    tx.objectStore('months').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 function recordComponentLink(componentId, collectionPointId, role, timestamp) {
   if (!componentId) return;
@@ -1652,8 +1722,8 @@ function combinedLabel(id, text) {
   return text ? (id + ' ' + text) : id;
 }
 
-document.getElementById('exportXlsxBtn').addEventListener('click', () => {
-  const allItems = Object.entries(items);
+function buildXlsxSheetsFromItems(itemsObj) {
+  const allItems = Object.entries(itemsObj);
 
   // ---- Per-unit sheets, matching the original workbook's 3 side-by-side column blocks ----
   const units = new Set();
@@ -1718,16 +1788,24 @@ document.getElementById('exportXlsxBtn').addEventListener('click', () => {
   ]});
 
   if (!sheets.length) sheets.push({ name: 'Sheet1', rows: [['No items yet']] });
+  return sheets;
+}
 
+function downloadXlsxFromItems(itemsObj, filenamePrefix) {
+  const sheets = buildXlsxSheetsFromItems(itemsObj);
   const bytes = buildXlsxFile(sheets);
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'safety_equipment_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.download = (filenamePrefix || 'safety_equipment') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
   a.click();
   URL.revokeObjectURL(url);
   showToast('XLSX downloaded — ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's'));
+}
+
+document.getElementById('exportXlsxBtn').addEventListener('click', () => {
+  downloadXlsxFromItems(items, 'safety_equipment');
 });
 
 // ---------- Export (flat CSV, no external dependencies) ----------
@@ -1994,8 +2072,10 @@ document.getElementById('startNewMonthLink').addEventListener('click', async () 
     'Start a new inspection month for ' + count + ' item(s)?\n\n' +
     'This will:\n' +
     '1) Download an XLSX backup of this month\'s results\n' +
-    '2) Save each item\'s current Pass/Fail status into its own history\n' +
-    '3) Clear Inspection / Last Inspected / Comments so you can re-inspect fresh\n\n' +
+    '2) Save a snapshot of this month in the app itself, under "Previous Months" — ' +
+    'you can come back and re-download its XLSX anytime, even later\n' +
+    '3) Save each item\'s current Pass/Fail status into its own history\n' +
+    '4) Clear Inspection / Last Inspected / Comments so you can re-inspect fresh\n\n' +
     'Equipment links (Frame/Cylinder/Mask RFID), calibration/hydro dates, and locations ' +
     'are NOT touched. This cannot be undone. Continue?'
   );
@@ -2003,6 +2083,13 @@ document.getElementById('startNewMonthLink').addEventListener('click', async () 
 
   document.getElementById('exportXlsxBtn').click();
   await new Promise(r => setTimeout(r, 400));
+
+  const archiveLabel = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  try {
+    await saveMonthlyArchive(archiveLabel, JSON.parse(JSON.stringify(items)));
+  } catch (e) {
+    showToast('Note: could not save an in-app archive of this month (XLSX download still happened)');
+  }
 
   const now = Date.now();
   let resetCount = 0;
@@ -2025,6 +2112,64 @@ document.getElementById('startNewMonthLink').addEventListener('click', async () 
   saveItems();
   renderList();
   showToast('New month started — ' + resetCount + ' item(s) reset, full history preserved');
+});
+
+// ---------- Previous Months overlay ----------
+async function renderPreviousMonthsList() {
+  const listEl = document.getElementById('previousMonthsList');
+  listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">Loading…</div>';
+  let archives;
+  try {
+    archives = await listMonthlyArchives();
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">Couldn\'t load archives on this device/browser.</div>';
+    return;
+  }
+  if (!archives.length) {
+    listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">No previous months archived yet — they\'ll appear here after you Start a New Month.</div>';
+    return;
+  }
+  listEl.innerHTML = archives.map(a => `
+    <div class="history-row" data-archive-id="${a.id}" style="align-items:center;">
+      <span class="hist-loc">${escapeHtml(a.label)} <span style="color:var(--text-dim);font-weight:400;">(${Object.keys(a.items).length} items)</span></span>
+      <div style="display:flex;gap:8px;">
+        <button class="archiveDownloadBtn" data-archive-id="${a.id}" style="padding:6px 12px;font-size:13px;">Download XLSX</button>
+        <button class="archiveDeleteBtn" data-archive-id="${a.id}" style="padding:6px 10px;font-size:13px;background:#7f1d1d;color:#fecaca;">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('previousMonthsLink').addEventListener('click', () => {
+  document.getElementById('previousMonthsOverlay').classList.add('show');
+  renderPreviousMonthsList();
+});
+document.getElementById('previousMonthsCloseBtn').addEventListener('click', () => {
+  document.getElementById('previousMonthsOverlay').classList.remove('show');
+});
+document.getElementById('previousMonthsList').addEventListener('click', async (e) => {
+  const dlBtn = e.target.closest('.archiveDownloadBtn');
+  if (dlBtn) {
+    const id = Number(dlBtn.dataset.archiveId);
+    dlBtn.textContent = 'Preparing…';
+    dlBtn.disabled = true;
+    try {
+      const archive = await getMonthlyArchive(id);
+      if (archive) downloadXlsxFromItems(archive.items, 'safety_equipment_' + archive.label.replace(/[^a-z0-9]+/gi, '_'));
+    } catch (err) {
+      showToast('Could not regenerate that month\'s XLSX');
+    }
+    dlBtn.textContent = 'Download XLSX';
+    dlBtn.disabled = false;
+    return;
+  }
+  const delBtn = e.target.closest('.archiveDeleteBtn');
+  if (delBtn) {
+    const id = Number(delBtn.dataset.archiveId);
+    if (!confirm('Delete this archived month? This cannot be undone.')) return;
+    try { await deleteMonthlyArchive(id); renderPreviousMonthsList(); }
+    catch (err) { showToast('Could not delete that archive'); }
+  }
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
