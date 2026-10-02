@@ -237,6 +237,8 @@
   <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
+  <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
+  <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -1911,6 +1913,132 @@ function getKnownSizeForComponent(componentId) {
   if (reg && ['Large', 'Medium', 'Small'].includes(reg.type)) return reg.type;
   return null;
 }
+// ---------- XLSX reading (for uploading a calibration list) ----------
+// A real .xlsx file is a ZIP archive whose parts are usually DEFLATE-compressed (unlike our
+// own export writer, which uses uncompressed STORE for simplicity). No external library —
+// decompression uses the browser's built-in DecompressionStream, and XML parsing uses the
+// browser's built-in DOMParser, so this stays dependency-free and keeps the strict CSP intact.
+function xlsxReadU16(buf, pos) { return buf[pos] | (buf[pos + 1] << 8); }
+function xlsxReadU32(buf, pos) { return (buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24)) >>> 0; }
+
+async function xlsxInflateRaw(bytes) {
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function xlsxReadZipEntries(arrayBuffer, wantedNames) {
+  const buf = new Uint8Array(arrayBuffer);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 65536; i--) {
+    if (xlsxReadU32(buf, i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('Not a valid .xlsx file (no ZIP directory found)');
+  const totalEntries = xlsxReadU16(buf, eocd + 10);
+  const centralDirOffset = xlsxReadU32(buf, eocd + 16);
+
+  const results = {};
+  let pos = centralDirOffset;
+  for (let i = 0; i < totalEntries; i++) {
+    if (xlsxReadU32(buf, pos) !== 0x02014b50) throw new Error('This .xlsx file looks corrupted');
+    const compressionMethod = xlsxReadU16(buf, pos + 10);
+    const compressedSize = xlsxReadU32(buf, pos + 20);
+    const nameLen = xlsxReadU16(buf, pos + 28);
+    const extraLen = xlsxReadU16(buf, pos + 30);
+    const commentLen = xlsxReadU16(buf, pos + 32);
+    const localHeaderOffset = xlsxReadU32(buf, pos + 42);
+    const name = new TextDecoder().decode(buf.subarray(pos + 46, pos + 46 + nameLen));
+
+    if (!wantedNames || wantedNames.includes(name)) {
+      const lNameLen = xlsxReadU16(buf, localHeaderOffset + 26);
+      const lExtraLen = xlsxReadU16(buf, localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + lNameLen + lExtraLen;
+      const compressedData = buf.subarray(dataStart, dataStart + compressedSize);
+      if (compressionMethod === 0) results[name] = compressedData;
+      else if (compressionMethod === 8) results[name] = await xlsxInflateRaw(compressedData);
+      else throw new Error('This .xlsx uses an unsupported compression method');
+    }
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return results;
+}
+
+function xlsxExcelSerialToIsoDate(serial) {
+  const n = Number(serial);
+  if (!isFinite(n)) return null;
+  const ms = Date.UTC(1899, 11, 30) + Math.round(n) * 86400000;
+  const d = new Date(ms);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+function xlsxParseDateLoosely(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return xlsxExcelSerialToIsoDate(value);
+  const s = String(value).trim();
+  if (/^\d+(\.\d+)?$/.test(s)) return xlsxExcelSerialToIsoDate(parseFloat(s));
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const month = parseInt(m[1], 10), day = parseInt(m[2], 10), year = parseInt(m[3], 10);
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m2 ? m2[0] : null;
+}
+function xlsxColLetterToIndex(ref) {
+  const m = ref.match(/^([A-Z]+)/);
+  if (!m) return 0;
+  let n = 0;
+  for (const ch of m[1]) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+function xlsxParseSharedStrings(xmlText) {
+  if (!xmlText) return [];
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  return [...doc.getElementsByTagName('si')].map(si =>
+    [...si.getElementsByTagName('t')].map(t => t.textContent).join('')
+  );
+}
+function xlsxParseWorksheetRows(xmlText, sharedStrings) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  return [...doc.getElementsByTagName('row')].map(rowEl => {
+    const row = [];
+    [...rowEl.children].filter(c => c.tagName === 'c').forEach(c => {
+      const idx = xlsxColLetterToIndex(c.getAttribute('r') || '');
+      const type = c.getAttribute('t');
+      let value = null;
+      if (type === 'inlineStr') {
+        const isEl = c.getElementsByTagName('is')[0];
+        value = isEl ? [...isEl.getElementsByTagName('t')].map(t => t.textContent).join('') : '';
+      } else if (type === 's') {
+        const vEl = c.getElementsByTagName('v')[0];
+        const sIdx = vEl ? parseInt(vEl.textContent, 10) : -1;
+        value = sharedStrings[sIdx] !== undefined ? sharedStrings[sIdx] : '';
+      } else if (type === 'str' || type === 'b') {
+        const vEl = c.getElementsByTagName('v')[0];
+        value = vEl ? vEl.textContent : '';
+      } else {
+        const vEl = c.getElementsByTagName('v')[0];
+        value = vEl ? parseFloat(vEl.textContent) : null;
+      }
+      row[idx] = value;
+    });
+    return row;
+  });
+}
+
+async function parseCalibrationXlsx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const entries = await xlsxReadZipEntries(arrayBuffer, ['xl/worksheets/sheet1.xml', 'xl/sharedStrings.xml']);
+  if (!entries['xl/worksheets/sheet1.xml']) throw new Error('Could not find a worksheet in this file');
+  const sheetXml = new TextDecoder().decode(entries['xl/worksheets/sheet1.xml']);
+  const sharedXml = entries['xl/sharedStrings.xml'] ? new TextDecoder().decode(entries['xl/sharedStrings.xml']) : null;
+  const sharedStrings = xlsxParseSharedStrings(sharedXml);
+  return xlsxParseWorksheetRows(sheetXml, sharedStrings);
+}
+
 function getKnownDateForComponent(componentId) {
   const reg = equipmentRegistry[String(componentId).trim()];
   return reg && reg.calibrationDate ? reg.calibrationDate : null;
@@ -2170,6 +2298,59 @@ document.getElementById('previousMonthsList').addEventListener('click', async (e
     try { await deleteMonthlyArchive(id); renderPreviousMonthsList(); }
     catch (err) { showToast('Could not delete that archive'); }
   }
+});
+
+// ---------- Upload a calibration list (Equipment Type / ID Number / Calibration Date) ----------
+const CALIBRATION_TYPE_MAP = { 'large': 'Large', 'medium': 'Medium', 'small': 'Small', 'scba frame': 'Frame', 'frame': 'Frame', 'cylinder': 'Cylinder' };
+
+document.getElementById('uploadCalibrationLink').addEventListener('click', () => {
+  if (typeof DecompressionStream === 'undefined') {
+    showToast('Your browser doesn\'t support reading Excel files directly — try a recent Chrome');
+    return;
+  }
+  document.getElementById('calibrationFileInput').click();
+});
+
+document.getElementById('calibrationFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  showToast('Reading ' + file.name + '…');
+  let rows;
+  try {
+    rows = await parseCalibrationXlsx(file);
+  } catch (err) {
+    alert('Could not read that file: ' + (err && err.message ? err.message : 'unknown error') +
+      '\n\nMake sure it\'s a real .xlsx file with columns: Equipment Type, ID Number, Calibration Date.');
+    return;
+  }
+
+  let updated = 0, added = 0, skipped = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const rawType = row[0];
+    const idNum = row[1];
+    const calDate = row[2];
+    if (!rawType || !idNum) { skipped++; continue; }
+    const mappedType = CALIBRATION_TYPE_MAP[String(rawType).trim().toLowerCase()];
+    if (!mappedType) { skipped++; continue; }
+    const id = String(idNum).trim();
+    if (!id) { skipped++; continue; }
+    const isoDate = xlsxParseDateLoosely(calDate) || '';
+    if (equipmentRegistry[id]) updated++; else added++;
+    equipmentRegistry[id] = { type: mappedType, calibrationDate: isoDate };
+  }
+
+  if (added === 0 && updated === 0) {
+    alert('No recognizable rows found in that file.\n\n' +
+      'Expected columns (in order): Equipment Type (Large/Medium/Small/SCBA Frame/Cylinder), ' +
+      'ID Number, Calibration Date — with the first row as a header.');
+    return;
+  }
+
+  saveEquipmentRegistry();
+  showToast('Calibration list updated — ' + added + ' added, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : ''));
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
