@@ -237,6 +237,7 @@
   <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
+  <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
   <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="uploadMonthlyLink">📥 Import monthly inspection results</button>
@@ -606,6 +607,20 @@
     <div id="historyLookupResults" style="margin-top:16px;"></div>
     <div class="modal-buttons">
       <button id="historyLookupCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="downloadByTypeOverlay">
+  <div class="modal">
+    <h2>Download by equipment type</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">
+      Pick one type to get a single-sheet XLSX. Frames, Cylinders and Masks include the ones
+      mounted inside SCBA Stations and Mask Cabinets, plus standalone ones.
+    </p>
+    <div id="downloadByTypeList" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;"></div>
+    <div class="modal-buttons">
+      <button id="downloadByTypeCloseBtn" style="background:#334155;color:var(--text);">Close</button>
     </div>
   </div>
 </div>
@@ -1810,6 +1825,133 @@ function downloadXlsxFromItems(itemsObj, filenamePrefix) {
 
 document.getElementById('exportXlsxBtn').addEventListener('click', () => {
   downloadXlsxFromItems(items, 'safety_equipment');
+});
+
+// ---------- Download a single equipment type ----------
+const DOWNLOAD_TYPES = [
+  { key: 'station', label: '🧯 SCBA Stations (full packs)', file: 'scba_stations' },
+  { key: 'cylinder', label: '🛢️ SCBA Cylinders (all)', file: 'scba_cylinders' },
+  { key: 'frame', label: '🎒 SCBA Frames (all)', file: 'scba_frames' },
+  { key: 'mask', label: '😷 SCBA Masks (all)', file: 'scba_masks' },
+  { key: 'maskcab', label: '🗄️ Mask Cabinets', file: 'mask_cabinets' },
+  { key: 'ext', label: '🔴 Extinguishers', file: 'extinguishers' },
+  { key: 'light', label: '💡 Emergency Lights', file: 'emergency_lights' },
+  { key: 'eyewash', label: '🚿 Eyewash Stations', file: 'eyewash_stations' },
+  { key: 'spill', label: '🧰 Spill Kits', file: 'spill_kits' },
+  { key: 'sar', label: '🌬️ SAR', file: 'sar' }
+];
+
+function buildTypeSheet(key, itemsObj) {
+  const all = Object.entries(itemsObj);
+  const ofType = t => all.filter(([, i]) => i.type === t);
+  const sortRows = rows => rows.sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || ''), undefined, { numeric: true }));
+  if (key === 'station') {
+    return { name: 'SCBA Stations', rows: [
+      ['Barcode', 'Unit', 'Location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Frame Serial Number', 'Cylinder barcode',
+       'Last hydro', 'Pressure', 'Cylinder Serial Number', 'Cylinder Manufactured Date', 'L mask', 'M mask', 'S mask', 'Inspection', 'Comments', 'Last inspected'],
+      ...ofType('SCBA Station').map(([id, i]) => [id, i.unit, i.scbaCabinetLocation, i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration,
+        i.scbaFrameSerialNumber, i.scbaCylinderId, i.scbaLastHydro, i.scbaPressure, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate,
+        i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaInspection, i.scbaComments, i.scbaLastInspected])
+    ]};
+  }
+  if (key === 'cylinder') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => { if (i.scbaCylinderId) rows.push([i.scbaCylinderId, 'In Station', id, i.scbaCabinetLocation, i.unit,
+      i.scbaLastHydro, i.scbaPressure, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate, i.scbaComments]); });
+    ofType('SCBA Cylinder').forEach(([id, i]) => rows.push([i.stdCylId || id, 'Standalone', '', '', i.unit,
+      i.stdCylLastHydro, i.stdCylPressure, i.stdCylSerialNumber, i.stdCylManufacturedDate, i.stdCylComments]));
+    return { name: 'SCBA Cylinders', rows: [['Cylinder RFID', 'Status', 'Station barcode', 'Station location', 'Unit', 'Last hydro', 'Pressure', 'Serial Number', 'Manufactured Date', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'frame') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => { if (i.scbaFrameId) rows.push([i.scbaFrameId, 'In Station', id, i.scbaCabinetLocation, i.unit,
+      i.scbaLastCalibration, i.scbaFrameSerialNumber, i.scbaComments]); });
+    ofType('SCBA Frame').forEach(([id, i]) => rows.push([i.stdFrameId || id, 'Standalone', '', '', i.unit,
+      i.stdFrameLastCalibration, i.stdFrameSerialNumber, i.stdFrameComments]));
+    return { name: 'SCBA Frames', rows: [['Frame RFID', 'Status', 'Station barcode', 'Station location', 'Unit', 'Last calibration', 'Serial Number', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'mask') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => {
+      [['Large', i.scbaLMaskId, i.scbaLMaskExpDate], ['Medium', i.scbaMMaskId, i.scbaMMaskExpDate], ['Small', i.scbaSMaskId, i.scbaSMaskExpDate]]
+        .forEach(([size, mid, exp]) => { if (mid) rows.push([mid, size, 'In Station', id, i.scbaCabinetLocation, i.unit, exp, '']); });
+    });
+    ofType('Mask Cabinet').forEach(([id, i]) => {
+      (i.masks || []).filter(m => m.id).forEach(m => rows.push([m.id, m.size || '', 'In Mask Cabinet', id, i.maskCabLocation, i.unit, m.expDate, '']));
+    });
+    ofType('SCBA Mask').forEach(([id, i]) => rows.push([i.stdMaskId || id, i.stdMaskSize || '', 'Standalone', '', '', i.unit, i.stdMaskExpDate, i.stdMaskComments]));
+    return { name: 'SCBA Masks', rows: [['Mask RFID', 'Size', 'Status', 'Parent barcode', 'Parent location', 'Unit', 'Calibration/EXP date', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'maskcab') {
+    return { name: 'Mask Cabinets', rows: [
+      ['Barcode', 'Unit', 'Location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
+      ...ofType('Mask Cabinet').map(([id, i]) => [id, i.unit, i.maskCabLocation, i.maskCabCondition,
+        (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+        i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments])
+    ]};
+  }
+  if (key === 'ext') {
+    return { name: 'Extinguishers', rows: [
+      ['Barcode', 'Unit', 'Location', 'Weight & Agent', 'General inspection', 'Comments', 'Last inspected', 'Serial Number', 'Manufactured Date'],
+      ...ofType('Extinguisher').map(([id, i]) => [id, i.unit, i.extLocation, i.extWeightAgent, i.extInspection, i.extComments, i.extLastInspected, i.extSerialNumber, i.extManufacturedDate])
+    ]};
+  }
+  if (key === 'light') {
+    return { name: 'Emergency Lights', rows: [
+      ['Barcode', 'Unit', 'Location', 'General inspection', 'Comments', 'Last inspected'],
+      ...ofType('Emergency Light').map(([id, i]) => [id, i.unit, i.lightLocation, i.lightInspection, i.lightComments, i.lightLastInspected])
+    ]};
+  }
+  if (key === 'eyewash') {
+    return { name: 'Eyewash Stations', rows: [
+      ['Barcode', 'Unit', 'Location', 'General inspection', 'Last service', 'Last inspected', 'Comments'],
+      ...ofType('Eyewash Station').map(([id, i]) => [id, i.unit, i.eyewashLocation, i.eyewashInspection, i.eyewashLastService, i.eyewashLastInspected, i.eyewashComments])
+    ]};
+  }
+  if (key === 'spill') {
+    return { name: 'Spill Kits', rows: [
+      ['Barcode', 'Unit', 'Location', 'Car seal intact', 'Missing items', 'Box condition', 'Last inspected', 'Comments'],
+      ...ofType('Spill Kit').map(([id, i]) => [id, i.unit, i.spillLocation, i.spillSeal, i.spillMissingItems, i.spillBoxCondition, i.spillLastInspected, i.spillComments])
+    ]};
+  }
+  if (key === 'sar') {
+    return { name: 'SAR', rows: [
+      ['Barcode', 'Unit', 'Location', 'RFID/Barcode', 'General inspection', 'Last inspected', 'Comments'],
+      ...ofType('SAR').map(([id, i]) => [id, i.unit, i.sarLocation, i.sarId, i.sarInspection, i.sarLastInspected, i.sarComments])
+    ]};
+  }
+  return null;
+}
+
+function downloadTypeXlsx(key) {
+  const def = DOWNLOAD_TYPES.find(t => t.key === key);
+  const sheet = def && buildTypeSheet(key, items);
+  if (!sheet) return;
+  if (sheet.rows.length < 2) { showToast('No ' + def.label.replace(/^\S+\s/, '') + ' in the app yet'); return; }
+  const bytes = buildXlsxFile([sheet]);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = def.file + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(def.file.replace(/_/g, ' ') + ': ' + (sheet.rows.length - 1) + ' rows downloaded');
+}
+
+document.getElementById('downloadByTypeLink').addEventListener('click', () => {
+  document.getElementById('downloadByTypeList').innerHTML = DOWNLOAD_TYPES.map(t => {
+    const n = buildTypeSheet(t.key, items).rows.length - 1;
+    return `<button type="button" class="dlTypeBtn" data-key="${t.key}" style="text-align:left;padding:12px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:var(--text);font-size:15px;">${t.label} <span style="color:var(--text-dim);float:right;">${n}</span></button>`;
+  }).join('');
+  document.getElementById('downloadByTypeOverlay').classList.add('show');
+});
+document.getElementById('downloadByTypeList').addEventListener('click', (e) => {
+  const b = e.target.closest('.dlTypeBtn');
+  if (b) downloadTypeXlsx(b.dataset.key);
+});
+document.getElementById('downloadByTypeCloseBtn').addEventListener('click', () => {
+  document.getElementById('downloadByTypeOverlay').classList.remove('show');
 });
 
 // ---------- Export (flat CSV, no external dependencies) ----------
