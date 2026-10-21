@@ -72,12 +72,6 @@ export function createCloudSync({ bridge, hooks, onStatus }) {
     });
   }
 
-  async function signIn() {
-    if (!auth) throw new Error('Cloud sync is not loaded yet');
-    const provider = new fb.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    await fb.signInWithPopup(auth, provider);
-  }
   async function signInEmail(email, password) {
     if (!auth) throw new Error('Cloud sync is not loaded yet');
     await fb.signInWithEmailAndPassword(auth, String(email || '').trim(), String(password || ''));
@@ -227,7 +221,7 @@ export function createCloudSync({ bridge, hooks, onStatus }) {
   }
 
   return {
-    start, signIn, signInEmail, signOut,
+    start, signInEmail, signOut,
     syncNow: () => pushNow(),
     get user() { return user; },
     get lastSyncAt() { return lastSyncAt; },
