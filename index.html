@@ -623,6 +623,12 @@
       <p style="color:var(--text-dim);font-size:13px;">Paste your Firebase web app config (Firebase console → Project settings → Your apps → Web app → Config). See SCBA_Cloud_Setup.md.</p>
       <textarea id="cloudConfigInput" rows="8" style="width:100%;font-family:monospace;font-size:12px;" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;…&quot;,&#10;  authDomain: &quot;…firebaseapp.com&quot;,&#10;  projectId: &quot;…&quot;,&#10;  appId: &quot;…&quot;&#10;};"></textarea>
     </div>
+    <div id="cloudEmailBlock" style="display:none;margin:8px 0;">
+      <p style="color:var(--text-dim);font-size:13px;margin:4px 0;">Or sign in with the email &amp; password you use for TetherCheck:</p>
+      <input type="email" id="cloudEmail" placeholder="Email" autocomplete="username" style="width:100%;margin-bottom:6px;">
+      <input type="password" id="cloudPassword" placeholder="Password" autocomplete="current-password" style="width:100%;margin-bottom:6px;">
+      <button id="cloudEmailSignInBtn" style="width:100%;">Sign in with email</button>
+    </div>
     <div class="modal-buttons" style="flex-wrap:wrap;">
       <button id="cloudCloseBtn" style="background:#334155;color:var(--text);">Close</button>
       <button id="cloudSaveBtn">Save &amp; connect</button>
@@ -2077,6 +2083,7 @@ function cloudSetState(state, text) {
   document.getElementById('cloudSaveBtn').style.display = (!configured || state === 'error') ? '' : 'none';
   document.getElementById('cloudSignInBtn').style.display = (state === 'signedout' || state === 'error') && configured ? '' : 'none';
   document.getElementById('cloudSignOutBtn').style.display = (state === 'synced' || state === 'connecting') ? '' : 'none';
+  document.getElementById('cloudEmailBlock').style.display = (state === 'signedout' || state === 'error') && configured ? '' : 'none';
   document.getElementById('cloudRemoveBtn').style.display = configured ? '' : 'none';
 }
 
@@ -2111,6 +2118,19 @@ document.getElementById('cloudSignInBtn').addEventListener('click', async () => 
     await cloud.signIn();
   } catch (err) {
     cloudSetState('error', 'Sign-in failed: ' + (err && err.message || err));
+  }
+});
+document.getElementById('cloudEmailSignInBtn').addEventListener('click', async () => {
+  const email = document.getElementById('cloudEmail').value;
+  const pw = document.getElementById('cloudPassword').value;
+  if (!email || !pw) { cloudSetState(cloudState, 'Enter your email and password'); return; }
+  try {
+    if (!cloud) { const cfg = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)); await cloudStart(cfg); }
+    await cloud.signInEmail(email, pw);
+    document.getElementById('cloudPassword').value = '';
+  } catch (err) {
+    const code = (err && err.code) || '';
+    cloudSetState('error', /invalid-credential|wrong-password|user-not-found/.test(code) ? 'Email or password not recognized.' : 'Sign-in failed: ' + (err && err.message || err));
   }
 });
 document.getElementById('cloudSignOutBtn').addEventListener('click', async () => {
