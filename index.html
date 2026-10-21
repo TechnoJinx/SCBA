@@ -2489,9 +2489,7 @@ function scanLoop() {
         applyKnownInfoIfAny(value, sizeTargetId, dateTargetId);
         const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
         const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
-        copyForExcel([value, finalDate, finalSize]).then(copied => {
-          showToast('Scanned: ' + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
-        });
+        showToast('Scanned: ' + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : ''));
         if (targetId === 'historyLookupInput') renderComponentHistory(value);
         return;
       }
@@ -3121,9 +3119,6 @@ function readTextRecord(message) {
 }
 function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
-// Copies scanned values to the clipboard, tab-separated — Excel/Sheets treat a tab in pasted
-// text as a column break, so pasting once into a cell spreads multiple values across a row.
-// Returns true on success so callers can fold a confirmation into their own toast message.
 // Unmistakable confirmation that a tag was actually read — a bright full-screen flash plus
 // a distinct double-pulse vibration, so it's obvious even if you're not sure the scan "took"
 // (useful when testing a new/unknown chip, not just during normal day-to-day use).
@@ -3132,19 +3127,6 @@ function flashNfcSuccess() {
   const flash = document.getElementById('nfcFlash');
   flash.classList.add('show');
   setTimeout(() => { flash.classList.remove('show'); }, 180);
-}
-
-async function copyForExcel(parts) {
-  const joined = parts.filter(p => p !== null && p !== undefined && p !== '').join('\t');
-  if (!joined) return false;
-  try {
-    await navigator.clipboard.writeText(joined);
-    return true;
-  } catch (e) {
-    // Clipboard access can be blocked by browser/device policy — fail quietly, the on-screen
-    // value is still there to copy manually if needed.
-    return false;
-  }
 }
 
 async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
@@ -3187,9 +3169,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
       applyKnownInfoIfAny(value, (sizeTargetId && !writtenSize) ? sizeTargetId : null, (dateTargetId && !writtenDate) ? dateTargetId : null);
       const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
       const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
-      copyForExcel([value, finalDate, finalSize]).then(copied => {
-        showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
-      });
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : ''));
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
     };
     if (btReaderReady()) {
