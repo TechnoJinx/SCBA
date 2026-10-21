@@ -2047,8 +2047,11 @@ const cloudBridge = {
 };
 
 function parseFirebaseConfig(text) {
-  const m = String(text || '').match(/\{[\s\S]*\}/);
+  const src = String(text || '');
+  // Prefer the block right after "firebaseConfig =" so a full pasted snippet (with import { … } lines) still works.
+  const m = src.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\n?\s*\})\s*;?/) || src.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('Could not find the { … } config block');
+  if (m.length > 1 && m[1]) m[0] = m[1];
   const jsonish = m[0]
     .replace(/\/\/.*$/gm, '')
     .replace(/'/g, '"')
