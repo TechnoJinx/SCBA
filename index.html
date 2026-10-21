@@ -238,6 +238,7 @@
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
+  <button type="button" class="manual-link" id="btReaderLink">🔵 Connect Bluetooth NFC reader (ACR1555U)</button>
   <button type="button" class="manual-link" id="customReportLink">📊 Build a custom Excel report (pick areas &amp; equipment)</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
   <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
@@ -2878,24 +2879,99 @@ document.getElementById('historyLookupNfcBtn').addEventListener('click', () => {
   scanNfcIntoField('historyLookupInput');
 });
 
+// ---------- Bluetooth NFC reader (ACS ACR1555U) via acr1555u.js ----------
+// The driver is an ES module that lives next to index.html. It's loaded on demand so the app
+// still works if the file is missing. It reads tags and feeds them through the same handlers
+// as the phone's built-in NFC. (The reader can't write tags — use the phone's NFC for that.)
+let btReader = null;
+let btEntryHandler = null;   // continuous scanning (home-screen Scan NFC)
+let btOnce = null;           // one-shot field fill
+let btBusy = false;
+const btLink = document.getElementById('btReaderLink');
+
+function btReaderReady() { return !!(btReader && btReader.connected); }
+
+function btToNdefLike(tag) {
+  // Re-shape the driver's result like Web NFC's event, so readTextRecords()/serialNumber just work.
+  return {
+    serialNumber: tag.serialNumber,
+    message: { records: tag.records.filter(r => r.recordType === 'text')
+      .map(r => ({ recordType: 'text', encoding: 'utf-8', data: new TextEncoder().encode(r.text || '') })) }
+  };
+}
+
+async function btTryReadNow() {
+  if (btBusy || !btReaderReady() || (!btEntryHandler && !btOnce)) return;
+  btBusy = true;
+  try {
+    const tag = await btReader.readTag();
+    const ev = btToNdefLike(tag);
+    if (btOnce) { const h = btOnce; btOnce = null; h(ev); }
+    else if (btEntryHandler) { btEntryHandler(ev); }
+  } catch (err) {
+    // No card yet is normal — the cardpresent event will trigger another attempt.
+    if (!/No card present|ICC mute/i.test(err && err.message || '')) showToast('Reader: ' + (err && err.message || 'read failed'));
+  }
+  btBusy = false;
+}
+
+function btUpdateLink() {
+  if (btReaderReady()) {
+    const b = btReader.battery;
+    btLink.textContent = '🔵 Reader connected' + (b != null ? ' · battery ' + b + '%' : '') + ' — tap to disconnect';
+    btLink.style.color = '#4ade80';
+  } else {
+    btLink.textContent = '🔵 Connect Bluetooth NFC reader (ACR1555U)';
+    btLink.style.color = '';
+  }
+}
+
+async function btLoadDriver() {
+  try {
+    return await import(new URL('./acr1555u.js', location.href).href);
+  } catch (err) {
+    throw new Error('Could not load acr1555u.js — make sure it is uploaded next to index.html in the repo');
+  }
+}
+
+btLink.addEventListener('click', async () => {
+  if (btReaderReady()) { btReader.disconnect(); return; }
+  if (!navigator.bluetooth) { showToast('Bluetooth isn\'t available here — use Chrome on Android over https'); return; }
+  btLink.textContent = '🔵 Connecting…';
+  try {
+    const mod = await btLoadDriver();
+    if (!btReader) {
+      btReader = new mod.ACR1555U();
+      btReader.addEventListener('cardpresent', () => btTryReadNow());
+      btReader.addEventListener('battery', btUpdateLink);
+      btReader.addEventListener('ready', btUpdateLink);
+      btReader.addEventListener('disconnected', () => { btUpdateLink(); showToast('Bluetooth reader disconnected'); });
+    }
+    await btReader.connect();
+    btUpdateLink();
+    showToast('Bluetooth reader connected — scan buttons will now use it');
+  } catch (err) {
+    btUpdateLink();
+    showToast(err && err.name === 'NotFoundError' ? 'No reader chosen' : ('Reader: ' + (err && err.message || 'could not connect')));
+  }
+});
+
 // ---------- NFC entry (alternate way to find/add a collection point) ----------
 const scanNfcEntryBtn = document.getElementById('scanNfcEntryBtn');
 let nfcEntryScanning = false;
 
 async function startNfcEntryScanning() {
-  if (!('NDEFReader' in window)) {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — use Scan Barcode instead');
     return;
   }
   nfcEntryScanning = true;
   scanNfcEntryBtn.textContent = 'Scanning… (tap to stop)';
   scanNfcEntryBtn.classList.add('scanning');
-  showToast('Hold the collection point\'s tag to the back of your phone…');
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader…' : 'Hold the collection point\'s tag to the back of your phone…');
 
   try {
-    const reader = new NDEFReader();
-    await reader.scan();
-    reader.addEventListener('reading', (event) => {
+    const onEntryReading = (event) => {
       if (!nfcEntryScanning) return;
       const writtenId = readTextRecord(event.message);
       const value = writtenId || event.serialNumber;
@@ -2910,13 +2986,22 @@ async function startNfcEntryScanning() {
       }
       showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
       openModal(matchId || value);
-    });
+    };
+    if (btReaderReady()) {
+      btEntryHandler = onEntryReading;
+      btTryReadNow();
+    } else {
+      const reader = new NDEFReader();
+      await reader.scan();
+      reader.addEventListener('reading', onEntryReading);
+    }
   } catch (err) {
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
     stopNfcEntryScanning();
   }
 }
 function stopNfcEntryScanning() {
+  btEntryHandler = null;
   nfcEntryScanning = false;
   scanNfcEntryBtn.textContent = '📡 Scan NFC';
   scanNfcEntryBtn.classList.remove('scanning');
@@ -2984,19 +3069,17 @@ async function copyForExcel(parts) {
 }
 
 async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
-  if (!('NDEFReader' in window)) {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — enter it manually');
     return;
   }
-  showToast('Hold the tag to the back of your phone…');
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader…' : 'Hold the tag to the back of your phone…');
   let done = false;
   const timeoutId = setTimeout(() => {
-    if (!done) { done = true; showToast('NFC scan timed out — try again'); }
+    if (!done) { done = true; btOnce = null; showToast('NFC scan timed out — try again'); }
   }, 10000);
   try {
-    const reader = new NDEFReader();
-    await reader.scan();
-    reader.addEventListener('reading', (event) => {
+    const onFieldReading = (event) => {
       if (done) return;
       done = true;
       clearTimeout(timeoutId);
@@ -3029,9 +3112,18 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
         showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
       });
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
-    });
+    };
+    if (btReaderReady()) {
+      btOnce = onFieldReading;
+      btTryReadNow();
+    } else {
+      const reader = new NDEFReader();
+      await reader.scan();
+      reader.addEventListener('reading', onFieldReading);
+    }
   } catch (err) {
     clearTimeout(timeoutId);
+    btOnce = null;
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
   }
 }
