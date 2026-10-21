@@ -78,6 +78,10 @@ export function createCloudSync({ bridge, hooks, onStatus }) {
     provider.setCustomParameters({ prompt: 'select_account' });
     await fb.signInWithPopup(auth, provider);
   }
+  async function signInEmail(email, password) {
+    if (!auth) throw new Error('Cloud sync is not loaded yet');
+    await fb.signInWithEmailAndPassword(auth, String(email || '').trim(), String(password || ''));
+  }
   async function signOut() {
     detach();
     if (auth) await fb.signOut(auth);
@@ -223,7 +227,7 @@ export function createCloudSync({ bridge, hooks, onStatus }) {
   }
 
   return {
-    start, signIn, signOut,
+    start, signIn, signInEmail, signOut,
     syncNow: () => pushNow(),
     get user() { return user; },
     get lastSyncAt() { return lastSyncAt; },
