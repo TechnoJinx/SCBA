@@ -9,10 +9,11 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
-  connect-src 'self';
+  connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com;
+  frame-src https://*.firebaseapp.com https://*.googleapis.com https://accounts.google.com;
   frame-ancestors 'none';
   form-action 'none';
   base-uri 'self';
@@ -238,6 +239,7 @@
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
+  <button type="button" class="manual-link" id="cloudLink">☁️ Cloud sync: off (set up)</button>
   <button type="button" class="manual-link" id="btReaderLink">🔵 Connect Bluetooth NFC reader (ACR1555U)</button>
   <button type="button" class="manual-link" id="customReportLink">📊 Build a custom Excel report (pick areas &amp; equipment)</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
@@ -613,6 +615,24 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="cloudOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>☁️ Cloud sync</h2>
+    <p id="cloudStatusText" style="font-size:14px;"></p>
+    <div id="cloudConfigBlock">
+      <p style="color:var(--text-dim);font-size:13px;">Paste your Firebase web app config (Firebase console → Project settings → Your apps → Web app → Config). See SCBA_Cloud_Setup.md.</p>
+      <textarea id="cloudConfigInput" rows="8" style="width:100%;font-family:monospace;font-size:12px;" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;…&quot;,&#10;  authDomain: &quot;…firebaseapp.com&quot;,&#10;  projectId: &quot;…&quot;,&#10;  appId: &quot;…&quot;&#10;};"></textarea>
+    </div>
+    <div class="modal-buttons" style="flex-wrap:wrap;">
+      <button id="cloudCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="cloudSaveBtn">Save &amp; connect</button>
+      <button id="cloudSignInBtn">Sign in with Google</button>
+      <button id="cloudSignOutBtn" style="background:#334155;color:var(--text);">Sign out</button>
+      <button id="cloudRemoveBtn" style="background:#7f1d1d;color:#fecaca;">Turn off cloud</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="customReportOverlay">
   <div class="modal" style="max-height:90vh;overflow-y:auto;">
     <h2>Custom Excel report</h2>
@@ -755,7 +775,12 @@ async function loadItems() {
   }
   saveItems();
 }
-function saveItems() { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+// Hooks the optional cloud sync (cloud-sync.js) attaches to; stay null when sync is off.
+window.__scbaCloud = { onItemsSaved: null, onHistorySaved: null };
+function saveItems() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  if (window.__scbaCloud.onItemsSaved) window.__scbaCloud.onItemsSaved();
+}
 const STALE_PLACEHOLDER_UNITS = ['Portables', 'Spill kits', 'Incident response equipment'];
 function loadUnits() {
   try { const raw = localStorage.getItem(UNITS_KEY); units = raw ? JSON.parse(raw) : DEFAULT_UNITS.slice(); }
@@ -774,7 +799,10 @@ function loadComponentHistory() {
   try { const raw = localStorage.getItem(COMPONENT_HISTORY_KEY); componentHistory = raw ? JSON.parse(raw) : {}; }
   catch (e) { componentHistory = {}; }
 }
-function saveComponentHistory() { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); }
+function saveComponentHistory() {
+  localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory));
+  if (window.__scbaCloud.onHistorySaved) window.__scbaCloud.onHistorySaved();
+}
 
 // Master reference data (e.g. a calibration spreadsheet) — id -> {type, calibrationDate}.
 // Distinct from componentHistory: this is static reference info, not a log of app usage.
@@ -1982,6 +2010,124 @@ document.getElementById('downloadByTypeCloseBtn').addEventListener('click', () =
   document.getElementById('downloadByTypeOverlay').classList.remove('show');
 });
 
+// ---------- Cloud sync (optional; Firebase via cloud-sync.js) ----------
+const CLOUD_CFG_KEY = 'safety_tracker_cloud_config_v1';
+let cloud = null;
+let cloudState = 'off';
+let renderTimer = null;
+const cloudBridge = {
+  getItems: () => items,
+  getHistory: () => componentHistory,
+  toast: (m) => showToast(m),
+  confirm: (m) => confirm(m),
+  applyItems(upserts, removals) {
+    let n = 0;
+    Object.entries(upserts || {}).forEach(([id, it]) => { items[id] = it; n++; });
+    (removals || []).forEach((id) => { if (id in items) { delete items[id]; n++; } });
+    if (n) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch (e) { /* quota */ }
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => { populateFilters(); renderList(); }, 150);
+    }
+    return n;
+  },
+  mergeHistory(incoming) {
+    let changed = false;
+    Object.entries(incoming || {}).forEach(([key, entries]) => {
+      const seen = new Map();
+      [...(componentHistory[key] || []), ...entries].forEach((e) => {
+        const k = e.collectionPointId + '|' + e.role + '|' + e.timestamp;
+        if (!seen.has(k)) seen.set(k, e);
+      });
+      const merged = Array.from(seen.values()).sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+      if (merged.length !== (componentHistory[key] || []).length) { componentHistory[key] = merged; changed = true; }
+    });
+    if (changed) { try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); } catch (e) { /* quota */ } }
+  }
+};
+
+function parseFirebaseConfig(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Could not find the { … } config block');
+  const jsonish = m[0]
+    .replace(/\/\/.*$/gm, '')
+    .replace(/'/g, '"')
+    .replace(/([{,]\s*)([A-Za-z_]\w*)\s*:/g, '$1"$2":')
+    .replace(/,\s*}/g, '}');
+  const cfg = JSON.parse(jsonish);
+  ['apiKey', 'authDomain', 'projectId', 'appId'].forEach((k) => { if (!cfg[k]) throw new Error('Config is missing "' + k + '"'); });
+  return cfg;
+}
+
+function cloudSetState(state, text) {
+  cloudState = state;
+  const link = document.getElementById('cloudLink');
+  const labels = {
+    off: '☁️ Cloud sync: off (set up)', loading: '☁️ Cloud sync: loading…', signedout: '☁️ Cloud sync: sign in needed',
+    connecting: '☁️ Cloud sync: connecting…', synced: '☁️ Cloud sync: on ✓', error: '☁️ Cloud sync: problem (tap for details)'
+  };
+  link.textContent = labels[state] || labels.off;
+  link.style.color = state === 'synced' ? '#4ade80' : (state === 'error' ? '#f87171' : '');
+  document.getElementById('cloudStatusText').textContent = text || '';
+  const configured = state !== 'off';
+  document.getElementById('cloudConfigBlock').style.display = configured && state !== 'error' ? 'none' : '';
+  document.getElementById('cloudSaveBtn').style.display = (!configured || state === 'error') ? '' : 'none';
+  document.getElementById('cloudSignInBtn').style.display = (state === 'signedout' || state === 'error') && configured ? '' : 'none';
+  document.getElementById('cloudSignOutBtn').style.display = (state === 'synced' || state === 'connecting') ? '' : 'none';
+  document.getElementById('cloudRemoveBtn').style.display = configured ? '' : 'none';
+}
+
+async function cloudStart(cfg) {
+  try {
+    const mod = await import(new URL('./cloud-sync.js', location.href).href);
+    cloud = mod.createCloudSync({ bridge: cloudBridge, hooks: window.__scbaCloud, onStatus: cloudSetState });
+    await cloud.start(cfg);
+  } catch (err) {
+    cloudSetState('error', 'Could not load cloud-sync.js — make sure it is uploaded next to index.html in the repo.');
+  }
+}
+
+document.getElementById('cloudLink').addEventListener('click', () => {
+  document.getElementById('cloudOverlay').classList.add('show');
+});
+document.getElementById('cloudCloseBtn').addEventListener('click', () => {
+  document.getElementById('cloudOverlay').classList.remove('show');
+});
+document.getElementById('cloudSaveBtn').addEventListener('click', async () => {
+  let cfg;
+  try { cfg = parseFirebaseConfig(document.getElementById('cloudConfigInput').value); }
+  catch (err) { cloudSetState(cloudState, 'Config problem: ' + err.message); return; }
+  try { localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(cfg)); } catch (e) { /* ignore */ }
+  document.getElementById('cloudConfigInput').value = '';
+  cloudSetState('loading', 'Connecting…');
+  await cloudStart(cfg);
+});
+document.getElementById('cloudSignInBtn').addEventListener('click', async () => {
+  try {
+    if (!cloud) { const cfg = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)); await cloudStart(cfg); }
+    await cloud.signIn();
+  } catch (err) {
+    cloudSetState('error', 'Sign-in failed: ' + (err && err.message || err));
+  }
+});
+document.getElementById('cloudSignOutBtn').addEventListener('click', async () => {
+  try { await cloud.signOut(); } catch (err) { /* ignore */ }
+});
+document.getElementById('cloudRemoveBtn').addEventListener('click', async () => {
+  if (!confirm('Turn off cloud sync on this phone? Your local data stays; nothing is deleted from the cloud.')) return;
+  try { if (cloud) await cloud.signOut(); } catch (err) { /* ignore */ }
+  try { localStorage.removeItem(CLOUD_CFG_KEY); localStorage.removeItem('safety_tracker_cloud_base_v1'); } catch (e) { /* ignore */ }
+  cloud = null;
+  window.__scbaCloud.onItemsSaved = null; window.__scbaCloud.onHistorySaved = null;
+  cloudSetState('off', 'Cloud sync is off.');
+});
+function cloudAutoStart() {
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY) || 'null'); } catch (e) { cfg = null; }
+  cloudSetState('off', 'Cloud sync is off. Paste your Firebase config below to turn it on.');
+  if (cfg) { cloudSetState('loading', 'Connecting…'); cloudStart(cfg); }
+}
+
 // ---------- Custom report: pick areas (units) and equipment ----------
 const CR_TYPE_MAP = { station: 'SCBA Station', cylinder: 'SCBA Cylinder', frame: 'SCBA Frame', mask: 'SCBA Mask', maskcab: 'Mask Cabinet',
   ext: 'Extinguisher', light: 'Emergency Light', eyewash: 'Eyewash Station', spill: 'Spill Kit', sar: 'SAR' };
@@ -2823,7 +2969,9 @@ document.getElementById('hardResetLink').addEventListener('click', async () => {
   );
   if (!confirmed) return;
   try {
+    const keepCfg = localStorage.getItem('safety_tracker_cloud_config_v1');
     localStorage.clear();
+    if (keepCfg) localStorage.setItem('safety_tracker_cloud_config_v1', keepCfg);
     if ('caches' in window) {
       const names = await caches.keys();
       await Promise.all(names.map(n => caches.delete(n)));
@@ -3312,6 +3460,7 @@ if (!window.isSecureContext) {
   await loadItems();
   populateFilters();
   renderList();
+  cloudAutoStart();
 })();
 
 if ('serviceWorker' in navigator) {
