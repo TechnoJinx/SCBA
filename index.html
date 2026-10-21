@@ -628,8 +628,9 @@
     </div>
     <div id="crTypes" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;"></div>
     <strong>Layout</strong>
-    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="type" checked> One sheet per equipment type (Frames/Cylinders/Masks include ones inside stations &amp; cabinets)</label>
-    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="unit"> One sheet per unit (original monthly workbook layout)</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="area" checked> One tab per area — each tab lists the selected equipment, section by section</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="type"> One tab per equipment type — all selected areas together (Frames/Cylinders/Masks include ones inside stations &amp; cabinets)</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="unit"> One tab per area in the original monthly workbook layout</label>
     <div id="crSummary" style="color:var(--text-dim);font-size:13px;margin-top:8px;"></div>
     <div class="modal-buttons">
       <button id="crCloseBtn" style="background:#334155;color:var(--text);">Cancel</button>
@@ -1999,6 +2000,23 @@ function crBuildSheets() {
   const keys = crSelected('type');
   const byUnit = crFilteredItems();
   const layout = (document.querySelector('input[name="crLayout"]:checked') || {}).value;
+  if (layout === 'area') {
+    const sheets = [];
+    crSelected('unit').forEach(u => {
+      const unitItems = {};
+      Object.entries(byUnit).forEach(([id, i]) => { if ((i.unit || CR_NO_UNIT) === u) unitItems[id] = i; });
+      const rows = [];
+      keys.forEach(k => {
+        const sh = buildTypeSheet(k, unitItems);
+        if (!sh || sh.rows.length < 2) return;
+        if (rows.length) rows.push([]);
+        rows.push([sh.name + ' (' + (sh.rows.length - 1) + ')']);
+        sh.rows.forEach(r => rows.push(r));
+      });
+      if (rows.length) sheets.push({ name: u, rows });
+    });
+    return sheets;
+  }
   if (layout === 'unit') {
     const types = new Set(keys.map(k => CR_TYPE_MAP[k]));
     const narrowed = {};
