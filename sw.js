@@ -1,10 +1,11 @@
-const CACHE_NAME = 'scba-tracker-v4';
+const CACHE_NAME = 'scba-tracker-v5';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './seed-data.json',
-  './acr1555u.js'
+  './acr1555u.js',
+  './cloud-sync.js'
 ];
 
 self.addEventListener('install', (event) => {
