@@ -11,7 +11,3493 @@
   default-src 'self';
   script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
   style-src 'self' 'unsafe-inline';
+  img-src 'self' data:;<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Safety Equipment Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
+  style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
+  connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com;
+  frame-src https://*.firebaseapp.com https://*.googleapis.com https://accounts.google.com;
+  frame-ancestors 'none';
+  form-action 'none';
+  base-uri 'self';
+  object-src 'none';
+">
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --card-border: #334155;
+    --accent: #38bdf8; --text: #e2e8f0; --text-dim: #94a3b8;
+    --danger: #f87171; --success: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 100px;
+  }
+  header { padding: 20px 16px 12px; text-align: center; }
+  header h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: 0.3px; }
+  header p { margin: 2px 0 0; color: var(--text-dim); font-size: 12px; }
+  .status-banner {
+    margin: 12px 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    background: #422006; color: #fbbf24; border: 1px solid #78350f; display: none;
+  }
+  .status-banner.show { display: block; }
+  .scan-area {
+    margin: 16px; padding: 26px 16px; border-radius: 16px;
+    background: var(--card); border: 1px solid var(--card-border); text-align: center;
+  }
+  .entry-buttons { display: flex; gap: 8px; }
+  .entry-buttons button {
+    flex: 1; border: none; border-radius: 999px; padding: 15px 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.1s, background 0.2s;
+  }
+  .entry-buttons button:active { transform: scale(0.97); }
+  #scanBarcodeEntryBtn { background: var(--accent); color: #052e3d; }
+  #scanNfcEntryBtn { background: #fbbf24; color: #3a2c02; }
+  #scanNfcEntryBtn.scanning { background: var(--danger); color: #3f0d0d; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  button:disabled { background: #475569 !important; color: #94a3b8 !important; cursor: not-allowed; }
+  .scan-hint { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+  .manual-link {
+    display: block; margin-top: 10px; background: none; border: none; color: var(--accent);
+    font-size: 12px; text-decoration: underline; cursor: pointer;
+  }
+  .toolbar { display: flex; gap: 8px; padding: 0 16px; margin-bottom: 8px; flex-wrap: wrap; }
+  .toolbar input[type="text"], .toolbar select {
+    flex: 1; min-width: 100px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--card-border);
+    background: var(--card); color: var(--text); font-size: 14px;
+  }
+  .section-label {
+    padding: 0 16px; color: var(--text-dim); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.8px; margin: 18px 0 8px;
+  }
+  .item-list { padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+  .item-card {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 12px;
+    padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .item-info { flex: 1; min-width: 0; }
+  .item-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .badges { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .badge-type { background: var(--accent); color: #052e3d; }
+  .badge-unit { background: #334155; color: var(--text); }
+  .badge-pass { background: var(--success); color: #062012; }
+  .badge-fail { background: var(--danger); color: #3f0d0d; }
+  .item-scanned { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .item-actions { display: flex; gap: 6px; }
+  .item-actions button {
+    background: #0f172a; border: 1px solid var(--card-border); color: var(--text-dim);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+  }
+  .empty-state { text-align: center; color: var(--text-dim); padding: 40px 20px; font-size: 14px; }
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
+    border-top: 1px solid var(--card-border); padding: 10px 16px; display: flex; gap: 8px; justify-content: center;
+  }
+  .bottom-bar button {
+    flex: 1; max-width: 200px; padding: 12px; border-radius: 10px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #exportBtn { background: #334155; color: var(--text); }
+  #clearBtn { background: #7f1d1d; color: #fecaca; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+    align-items: flex-end; justify-content: center; z-index: 100;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card); width: 100%; max-width: 480px; border-radius: 16px 16px 0 0;
+    padding: 20px; max-height: 92vh; overflow-y: auto; animation: slideUp 0.2s ease-out;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal h2 { margin: 0 0 4px; font-size: 17px; }
+  .modal .tag-id { font-family: monospace; color: var(--text-dim); font-size: 12px; margin-bottom: 16px; word-break: break-all; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; margin-top: 12px; }
+  .modal input, .modal textarea, .modal select {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; color: var(--text); font-size: 14px;
+  }
+  .type-toggle { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .type-toggle button {
+    flex: 1; min-width: 90px; padding: 10px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; color: var(--text-dim); font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .type-toggle button.active { background: var(--accent); color: #052e3d; border-color: var(--accent); }
+  .field-row { display: flex; gap: 8px; }
+  .field-row > div { flex: 1; }
+  .type-fields { display: none; }
+  .type-fields.active { display: block; }
+  .modal-buttons { display: flex; gap: 8px; margin-top: 18px; }
+  .modal-buttons button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #saveItemBtn { background: var(--accent); color: #052e3d; }
+  #cancelModalBtn { background: #334155; color: var(--text); }
+  #deleteItemBtn { background: #7f1d1d; color: #fecaca; flex: 0 0 auto; padding: 12px 16px; }
+
+  .input-with-scan { display: flex; gap: 6px; align-items: stretch; }
+  .input-with-scan input { flex: 1; }
+  .scan-btn, .scan-nfc-btn, .write-nfc-btn, .scan-cam-btn, .write-date-btn {
+    flex: 0 0 auto; width: 42px; border-radius: 8px; border: 1px solid var(--card-border);
+    background: #0f172a; font-size: 18px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .scan-btn { color: var(--accent); }
+  .scan-cam-btn { color: #34d399; }
+  .write-date-btn { color: #f472b6; }
+  .scan-nfc-btn { color: #fbbf24; }
+  .write-nfc-btn { color: #a78bfa; }
+  .mask-row {
+    background: #0f172a; border: 1px solid var(--card-border); border-radius: 10px;
+    padding: 10px; margin-top: 8px;
+  }
+  .mask-row-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .mask-row-header select { width: auto; flex: 1; margin-right: 8px; }
+  .mask-row-remove {
+    flex: 0 0 auto; background: #7f1d1d; color: #fecaca; border: none; border-radius: 6px;
+    width: 30px; height: 30px; font-size: 14px; cursor: pointer;
+  }
+  .mask-row-date { margin-top: 6px; }
+  .mask-row-date label { font-size: 11px; margin-top: 4px; }
+  .subsection-label {
+    margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--card-border);
+    font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
+  }
+
+  .view-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
+    border-bottom: 1px solid #263244; font-size: 14px;
+  }
+  .view-row .view-label { color: var(--text-dim); flex: 0 0 auto; }
+  .view-row .view-value { color: var(--text); text-align: right; word-break: break-word; }
+
+  .history-section { margin-top: 16px; border-top: 1px solid var(--card-border); padding-top: 12px; }
+  .history-toggle { background: none; border: none; color: var(--accent); font-size: 13px; padding: 0; cursor: pointer; }
+  .history-list { margin-top: 10px; max-height: 160px; overflow-y: auto; display: none; }
+  .history-list.show { display: block; }
+  .history-row {
+    display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0;
+    border-bottom: 1px solid #263244; color: var(--text-dim);
+  }
+  .history-row .hist-loc { color: var(--text); }
+
+  .toast {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--card);
+    border: 1px solid var(--card-border); padding: 10px 18px; border-radius: 999px; font-size: 13px;
+    z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .toast.show { opacity: 1; }
+
+  #nfcFlash {
+    position: fixed; inset: 0; background: #4ade80; opacity: 0;
+    pointer-events: none; z-index: 500; transition: opacity 0.12s ease-out;
+  }
+  #nfcFlash.show { opacity: 0.55; transition: opacity 0.04s ease-out; }
+
+  .scanner-overlay {
+    position: fixed; inset: 0; background: #000; display: none;
+    flex-direction: column; z-index: 300;
+  }
+  .scanner-overlay.show { display: flex; }
+  .scanner-overlay video { flex: 1; width: 100%; object-fit: cover; }
+  .scanner-hint {
+    position: absolute; top: 16px; left: 0; right: 0; text-align: center;
+    color: #fff; font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); padding: 0 16px;
+  }
+  .scanner-frame {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 80%; max-width: 320px; height: 120px; border: 3px solid var(--accent);
+    border-radius: 12px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4);
+  }
+  .scanner-cancel {
+    padding: 16px; background: #000; border: none; color: #fff; font-size: 15px;
+    font-weight: 600; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="scanner-overlay" id="scannerOverlay">
+  <div class="scanner-hint" id="scannerHint">Point camera at the barcode</div>
+  <video id="scannerVideo" autoplay playsinline muted></video>
+  <div class="scanner-frame"></div>
+  <button type="button" class="scanner-cancel" id="scannerCancelBtn">Cancel</button>
+</div>
+
+<header>
+  <h1>🦺 Safety Equipment Tracker</h1>
+  <p id="itemCount">0 items tracked</p>
+</header>
+
+<div class="status-banner" id="statusBanner"></div>
+
+<div class="scan-area">
+  <div class="entry-buttons">
+    <button id="scanBarcodeEntryBtn">📷 Scan Barcode</button>
+    <button id="scanNfcEntryBtn">📡 Scan NFC</button>
+  </div>
+  <div class="scan-hint" id="scanHint">Scan the collection point's barcode or RFID tag to find or add its record</div>
+  <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
+  <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
+  <button type="button" class="manual-link" id="addUnassignedLink">➕ Add equipment not at a location yet</button>
+  <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
+  <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
+  <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
+  <button type="button" class="manual-link" id="cloudLink">☁️ Cloud sync: off (set up)</button>
+  <button type="button" class="manual-link" id="btReaderLink">🔵 Connect Bluetooth NFC reader (ACR1555U)</button>
+  <button type="button" class="manual-link" id="customReportLink">📊 Build a custom Excel report (pick areas &amp; equipment)</button>
+  <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
+  <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
+  <button type="button" class="manual-link" id="uploadMonthlyLink">📥 Import monthly inspection results</button>
+  <input type="file" id="monthlyFileInput" accept=".xlsx" style="display:none;">
+  <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="searchInput" placeholder="Search...">
+  <select id="typeFilter"><option value="">All types</option></select>
+  <select id="unitFilter"><option value="">All units</option></select>
+</div>
+
+<div class="section-label">Inventory</div>
+<div class="item-list" id="itemList"></div>
+
+<div class="bottom-bar">
+  <button id="exportBtn">Export CSV</button>
+  <button id="exportXlsxBtn">Export XLSX</button>
+  <button id="clearBtn">Clear All</button>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">New Item</h2>
+    <div class="tag-id" id="modalTagId"></div>
+
+    <label>Equipment Type</label>
+    <div class="type-toggle" id="typeToggle">
+      <button type="button" data-type="Extinguisher">Extinguisher</button>
+      <button type="button" data-type="Emergency Light">Emerg. Light</button>
+      <button type="button" data-type="Eyewash Station">Eyewash</button>
+      <button type="button" data-type="Spill Kit">Spill Kit</button>
+      <button type="button" data-type="Mask Cabinet">Mask Cabinet</button>
+      <button type="button" data-type="SAR">SAR</button>
+      <button type="button" data-type="SCBA Station">SCBA Station</button>
+      <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
+      <button type="button" data-type="SCBA Frame">SCBA Frame</button>
+      <button type="button" data-type="SCBA Mask">SCBA Mask</button>
+    </div>
+
+    <div id="unitFieldWrapper">
+      <label>Unit</label>
+      <select id="unitInput"></select>
+    </div>
+
+    <!-- Extinguisher fields -->
+    <div class="type-fields" id="fields-Extinguisher">
+      <label>Location</label>
+      <input type="text" id="extLocationInput" placeholder="e.g. Reformer Shelter NE Door">
+      <label>Weight & Agent</label>
+      <input type="text" id="extWeightAgentInput" placeholder="e.g. 9.5 lbs CleanGuard">
+      <label>Serial Number</label>
+      <input type="text" id="extSerialNumberInput" placeholder="e.g. printed on the manufacturer label">
+      <label>Manufactured Date</label>
+      <input type="date" id="extManufacturedDateInput">
+      <label>General Inspection</label>
+      <select id="extInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="extLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="extCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Emergency Light fields -->
+    <div class="type-fields" id="fields-Emergency Light">
+      <label>Location</label>
+      <input type="text" id="lightLocationInput" placeholder="e.g. RE Shelter NE Dr">
+      <label>General Inspection</label>
+      <select id="lightInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="lightLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="lightCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Eyewash Station fields -->
+    <div class="type-fields" id="fields-Eyewash Station">
+      <label>Location</label>
+      <input type="text" id="eyewashLocationInput" placeholder="e.g. NFH, Paint Booth">
+      <label>General Inspection</label>
+      <select id="eyewashInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Service</label>
+      <input type="date" id="eyewashLastServiceInput">
+      <label>Last Inspected</label>
+      <input type="date" id="eyewashLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="eyewashCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Spill Kit fields -->
+    <div class="type-fields" id="fields-Spill Kit">
+      <label>Location</label>
+      <input type="text" id="spillLocationInput" placeholder="e.g. NW corner Blaine parking lot">
+      <label>Car Seal Intact</label>
+      <select id="spillSealInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Missing Items</label>
+      <input type="text" id="spillMissingItemsInput" placeholder="e.g. none">
+      <label>Box Condition</label>
+      <input type="text" id="spillBoxConditionInput" placeholder="e.g. Good">
+      <label>Last Inspected</label>
+      <input type="date" id="spillLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="spillCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- Mask Cabinet (multiple masks stored together at a unit) -->
+    <div class="type-fields" id="fields-Mask Cabinet">
+      <label>Cabinet Location</label>
+      <input type="text" id="maskCabLocationInput" placeholder="e.g. Main Control Room Mask Cabinet">
+      <label>Cabinet Condition</label>
+      <select id="maskCabConditionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+
+      <div class="subsection-label">Masks in this cabinet</div>
+      <div id="maskCabRowsContainer"></div>
+      <button type="button" id="maskCabAddRowBtn" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px dashed var(--card-border);background:none;color:var(--accent);font-size:13px;cursor:pointer;">+ Add Mask</button>
+
+      <label>SAR Number</label>
+      <div class="input-with-scan">
+        <input type="text" id="maskCabSarNumberInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="maskCabSarNumberInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="maskCabSarNumberInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="maskCabSarNumberInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>Mask Box</label>
+      <select id="maskCabBoxInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+
+      <label>General Inspection</label>
+      <select id="maskCabInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="maskCabLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="maskCabCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SAR (Supplied Air Regulator) -->
+    <div class="type-fields" id="fields-SAR">
+      <label>Location</label>
+      <input type="text" id="sarLocationInput" placeholder="e.g. Main Control Room SAR Station">
+      <label>Regulator Barcode/RFID</label>
+      <div class="input-with-scan">
+        <input type="text" id="sarIdInput" placeholder="Tap 📡 or 📷 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="sarIdInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="sarIdInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="sarIdInput" title="Write ID to tag">✏️</button>
+      </div>
+      <label>General Inspection</label>
+      <select id="sarInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="sarLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="sarCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Station (combined) fields -->
+    <div class="type-fields" id="fields-SCBA Station">
+      <label>Cabinet Location</label>
+      <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. Reformer Shelter Inside #1">
+      <label>Cabinet Condition</label>
+      <select id="scbaCabinetConditionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+
+      <div class="subsection-label">Frame</div>
+      <label>Frame RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
+        <button type="button" class="scan-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaFrameIdInput" data-date-target="scbaLastCalibrationInput" title="Update date only">📅</button>
+      </div>
+      <label>Last Calibration</label>
+      <input type="date" id="scbaLastCalibrationInput">
+      <label>Frame Serial Number</label>
+      <input type="text" id="scbaFrameSerialNumberInput" placeholder="e.g. printed on the frame label">
+
+      <div class="subsection-label">Cylinder</div>
+      <label>Cylinder RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaCylinderIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
+        <button type="button" class="scan-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaCylinderIdInput" data-date-target="scbaLastHydroInput" title="Update date only">📅</button>
+      </div>
+      <div class="field-row">
+        <div>
+          <label>Last Hydro</label>
+          <input type="date" id="scbaLastHydroInput">
+        </div>
+        <div>
+          <label>Pressure (psi)</label>
+          <input type="number" id="scbaPressureInput">
+        </div>
+      </div>
+      <label>Cylinder Serial Number</label>
+      <input type="text" id="scbaCylinderSerialNumberInput" placeholder="e.g. printed on the cylinder label">
+      <label>Manufactured Date</label>
+      <input type="date" id="scbaCylinderManufacturedDateInput">
+
+      <div class="subsection-label">Masks</div>
+      <label>L Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaLMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaLMaskIdInput" data-date-target="scbaLMaskExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>L Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaLMaskExpDateInput">
+
+      <label>M Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaMMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaMMaskIdInput" data-date-target="scbaMMaskExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>M Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaMMaskExpDateInput">
+
+      <label>S Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="scbaSMaskIdInput" placeholder="Tap 📡 to scan">
+        <button type="button" class="scan-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="scbaSMaskIdInput" data-date-target="scbaSMaskExpDateInput" title="Update date only">📅</button>
+      </div>
+      <label>S Mask Calibration/EXP Date</label>
+      <input type="date" id="scbaSMaskExpDateInput">
+
+      <div class="subsection-label">Overall</div>
+      <label>SCBA General Inspection</label>
+      <select id="scbaInspectionInput">
+        <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
+      </select>
+      <label>Last Inspected</label>
+      <input type="date" id="scbaLastInspectedInput">
+      <label>Comments</label>
+      <textarea id="scbaCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Cylinder (standalone — spare/loose cylinder, no frame or masks attached) -->
+    <div class="type-fields" id="fields-SCBA Cylinder">
+      <label>Cylinder RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdCylIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdCylIdInput" data-date-target="stdCylLastHydroInput" title="Update date only">📅</button>
+      </div>
+      <div class="field-row">
+        <div>
+          <label>Last Hydro</label>
+          <input type="date" id="stdCylLastHydroInput">
+        </div>
+        <div>
+          <label>Pressure (psi)</label>
+          <input type="number" id="stdCylPressureInput">
+        </div>
+      </div>
+      <label>Serial Number</label>
+      <input type="text" id="stdCylSerialNumberInput" placeholder="e.g. printed on the cylinder label">
+      <label>Manufactured Date</label>
+      <input type="date" id="stdCylManufacturedDateInput">
+      <label>Comments</label>
+      <textarea id="stdCylCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Frame (standalone — loose frame, not currently in a station) -->
+    <div class="type-fields" id="fields-SCBA Frame">
+      <label>Frame RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdFrameIdInput" placeholder="Tap 📡 to scan the frame's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdFrameIdInput" data-date-target="stdFrameLastCalibrationInput" title="Update date only">📅</button>
+      </div>
+      <label>Last Calibration</label>
+      <input type="date" id="stdFrameLastCalibrationInput">
+      <label>Serial Number</label>
+      <input type="text" id="stdFrameSerialNumberInput" placeholder="e.g. printed on the frame label">
+      <label>Comments</label>
+      <textarea id="stdFrameCommentsInput" rows="2"></textarea>
+    </div>
+
+    <!-- SCBA Mask (standalone — loose mask, not currently in a station) -->
+    <div class="type-fields" id="fields-SCBA Mask">
+      <label>Size</label>
+      <select id="stdMaskSizeInput">
+        <option value="Large">Large</option><option value="Medium">Medium</option><option value="Small">Small</option>
+      </select>
+      <label>Mask RFID Tag</label>
+      <div class="input-with-scan">
+        <input type="text" id="stdMaskIdInput" placeholder="Tap 📡 to scan the mask's tag">
+        <button type="button" class="scan-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="stdMaskIdInput" data-size-target="stdMaskSizeInput" data-date-target="stdMaskExpDateInput" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Write ID to tag">✏️</button>
+        <button type="button" class="write-date-btn" data-target="stdMaskIdInput" data-date-target="stdMaskExpDateInput" data-size-target="stdMaskSizeInput" title="Update date only">📅</button>
+      </div>
+      <label>EXP / Last Inspected</label>
+      <input type="date" id="stdMaskExpDateInput">
+      <label>Comments</label>
+      <textarea id="stdMaskCommentsInput" rows="2"></textarea>
+    </div>
+
+    <div class="history-section" id="historySection" style="display:none;">
+      <button type="button" class="history-toggle" id="historyToggle">Show scan history ▾</button>
+      <div class="history-list" id="historyList"></div>
+    </div>
+
+    <div class="modal-buttons">
+      <button id="deleteItemBtn" style="display:none;">Delete</button>
+      <button id="cancelModalBtn">Cancel</button>
+      <button id="saveItemBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="viewOverlay">
+  <div class="modal">
+    <h2 id="viewTitle">View Item</h2>
+    <div class="tag-id" id="viewSubtitle"></div>
+    <div id="viewFieldsContainer"></div>
+    <div class="history-section" id="viewHistorySection" style="display:none;">
+      <button type="button" class="history-toggle" id="viewHistoryToggle">Show scan history ▾</button>
+      <div class="history-list" id="viewHistoryList"></div>
+    </div>
+    <div class="modal-buttons">
+      <button id="viewCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="viewEditBtn" style="background:var(--accent);color:#052e3d;">Edit</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historyLookupOverlay">
+  <div class="modal">
+    <h2>Component Movement History</h2>
+    <label>Frame / Cylinder / Mask RFID Tag</label>
+    <div class="input-with-scan">
+      <input type="text" id="historyLookupInput" placeholder="Type, or scan with the NFC button">
+      <button type="button" class="scan-nfc-btn" id="historyLookupNfcBtn" title="Scan NFC">📡</button>
+      <button type="button" class="scan-cam-btn" data-target="historyLookupInput" title="Scan barcode">📷</button>
+    </div>
+    <div id="historyLookupResults" style="margin-top:16px;"></div>
+    <div class="modal-buttons">
+      <button id="historyLookupCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cloudOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>☁️ Cloud sync</h2>
+    <p id="cloudStatusText" style="font-size:14px;"></p>
+    <div id="cloudConfigBlock">
+      <p style="color:var(--text-dim);font-size:13px;">Paste your Firebase web app config (Firebase console → Project settings → Your apps → Web app → Config). See SCBA_Cloud_Setup.md.</p>
+      <textarea id="cloudConfigInput" rows="8" style="width:100%;font-family:monospace;font-size:12px;" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;…&quot;,&#10;  authDomain: &quot;…firebaseapp.com&quot;,&#10;  projectId: &quot;…&quot;,&#10;  appId: &quot;…&quot;&#10;};"></textarea>
+    </div>
+    <div id="cloudEmailBlock" style="display:none;margin:8px 0;">
+      <p style="color:var(--text-dim);font-size:13px;margin:4px 0;">Sign in with the email &amp; password you use for TetherCheck:</p>
+      <input type="email" id="cloudEmail" placeholder="Email" autocomplete="username" style="width:100%;margin-bottom:6px;">
+      <input type="password" id="cloudPassword" placeholder="Password" autocomplete="current-password" style="width:100%;margin-bottom:6px;">
+      <button id="cloudEmailSignInBtn" style="width:100%;">Sign in with email</button>
+    </div>
+    <div class="modal-buttons" style="flex-wrap:wrap;">
+      <button id="cloudCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="cloudSaveBtn">Save &amp; connect</button>
+      <button id="cloudSignOutBtn" style="background:#334155;color:var(--text);">Sign out</button>
+      <button id="cloudRemoveBtn" style="background:#7f1d1d;color:#fecaca;">Turn off cloud</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="customReportOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>Custom Excel report</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">Pick which areas (units) and which equipment to include.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+      <strong>Areas / units</strong>
+      <span><button type="button" class="manual-link crAll" data-group="unit" data-on="1">All</button> <button type="button" class="manual-link crAll" data-group="unit" data-on="0">None</button></span>
+    </div>
+    <div id="crUnits" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong>Equipment</strong>
+      <span><button type="button" class="manual-link crAll" data-group="type" data-on="1">All</button> <button type="button" class="manual-link crAll" data-group="type" data-on="0">None</button></span>
+    </div>
+    <div id="crTypes" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;"></div>
+    <strong>Layout</strong>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="area" checked> One tab per area — each tab lists the selected equipment, section by section</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="type"> One tab per equipment type — all selected areas together (Frames/Cylinders/Masks include ones inside stations &amp; cabinets)</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="unit"> One tab per area in the original monthly workbook layout</label>
+    <div id="crSummary" style="color:var(--text-dim);font-size:13px;margin-top:8px;"></div>
+    <div class="modal-buttons">
+      <button id="crCloseBtn" style="background:#334155;color:var(--text);">Cancel</button>
+      <button id="crDownloadBtn">Download XLSX</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="downloadByTypeOverlay">
+  <div class="modal">
+    <h2>Download by equipment type</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">
+      Pick one type to get a single-sheet XLSX. Frames, Cylinders and Masks include the ones
+      mounted inside SCBA Stations and Mask Cabinets, plus standalone ones.
+    </p>
+    <div id="downloadByTypeList" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;"></div>
+    <div class="modal-buttons">
+      <button id="downloadByTypeCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="previousMonthsOverlay">
+  <div class="modal">
+    <h2>Previous Months</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">
+      Each time you start a new inspection month, a snapshot is saved here — you can come back
+      anytime and re-download that month's XLSX, even much later.
+    </p>
+    <div id="previousMonthsList" style="margin-top:12px;"></div>
+    <div class="modal-buttons">
+      <button id="previousMonthsCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="nfcFlash"></div>
+
+<script>
+const STORAGE_KEY = 'safety_tracker_items_v6';
+const UNITS_KEY = 'safety_tracker_units_v1';
+const ADD_NEW_VALUE = '__add_new__';
+const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
+
+let items = {};
+let units = [];
+let currentId = null;
+let currentType = 'Extinguisher';
+
+// ---------- Storage ----------
+function expandSeedData(compact) {
+  const now = Date.now();
+  const out = {};
+  (compact.ext || []).forEach(([id, unit, extLocation, extWeightAgent, extInspection, extLastInspected, extComments]) => {
+    out[id] = { type: 'Extinguisher', unit, extLocation, extWeightAgent, extInspection, extLastInspected, extComments,
+      history: [{ location: extLocation, result: extInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.light || []).forEach(([id, unit, lightLocation, lightInspection, lightLastInspected, lightComments]) => {
+    out[id] = { type: 'Emergency Light', unit, lightLocation, lightInspection, lightLastInspected, lightComments,
+      history: [{ location: lightLocation, result: lightInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.scba || []).forEach(([id, unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
+      scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments]) => {
+    out[id] = { type: 'SCBA Station', unit, scbaCabinetLocation, scbaCabinetCondition, scbaFrameId, scbaLastCalibration,
+      scbaCylinderId, scbaLastHydro, scbaPressure, scbaLMaskId, scbaMMaskId, scbaSMaskId, scbaInspection, scbaLastInspected, scbaComments,
+      history: [{ location: scbaCabinetLocation, result: scbaInspection, timestamp: now, equipment:
+        [['Frame', scbaFrameId], ['Cylinder', scbaCylinderId], ['L Mask', scbaLMaskId], ['M Mask', scbaMMaskId], ['S Mask', scbaSMaskId]]
+          .filter(([, v]) => v) }], createdAt: now, updatedAt: now };
+  });
+  (compact.stdcyl || []).forEach(([id, unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments]) => {
+    out[id] = { type: 'SCBA Cylinder', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
+      history: [{ location: stdCylId || id, result: '', timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.eyewash || []).forEach(([id, eyewashLocation, eyewashInspection, eyewashLastService, eyewashLastInspected, eyewashComments]) => {
+    out[id] = { type: 'Eyewash Station', unit: '', eyewashLocation, eyewashInspection, eyewashLastService, eyewashLastInspected, eyewashComments,
+      history: [{ location: eyewashLocation, result: eyewashInspection, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.spillkit || []).forEach(([id, spillLocation, spillSeal, spillMissingItems, spillBoxCondition, spillLastInspected, spillComments]) => {
+    out[id] = { type: 'Spill Kit', unit: '', spillLocation, spillSeal, spillMissingItems, spillBoxCondition, spillLastInspected, spillComments,
+      history: [{ location: spillLocation, result: spillSeal, timestamp: now }], createdAt: now, updatedAt: now };
+  });
+  (compact.maskcab || []).forEach(([id, unit, maskCabLocation, maskCabCondition, maskCabLId, maskCabLExpDate,
+      maskCabMId, maskCabMExpDate, maskCabSId, maskCabSExpDate, maskCabSarNumber, maskCabBox,
+      maskCabInspection, maskCabLastInspected, maskCabComments]) => {
+    const masks = [];
+    if (maskCabLId) masks.push({ size: 'Large', id: maskCabLId, expDate: maskCabLExpDate || '' });
+    if (maskCabMId) masks.push({ size: 'Medium', id: maskCabMId, expDate: maskCabMExpDate || '' });
+    if (maskCabSId) masks.push({ size: 'Small', id: maskCabSId, expDate: maskCabSExpDate || '' });
+    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, masks, maskCabSarNumber, maskCabBox,
+      maskCabInspection, maskCabLastInspected, maskCabComments,
+      history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now, equipment:
+        [...masks.filter(m => m.id).map(m => [(m.size || '') + ' Mask', m.id]), ...(maskCabSarNumber ? [['SAR', maskCabSarNumber]] : [])] }], createdAt: now, updatedAt: now };
+  });
+  return out;
+}
+
+async function loadItems() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw !== null) {
+    try { items = JSON.parse(raw); } catch (e) { items = {}; }
+    return;
+  }
+  // First-ever load on this device — seed from the July 2026 inspection sheet.
+  try {
+    const res = await fetch('seed-data.json');
+    if (!res.ok) throw new Error('seed-data.json returned HTTP ' + res.status);
+    const json = await res.json();
+    items = expandSeedData(json);
+    Object.entries(items).forEach(([id, item]) => {
+      recordComponentLinksForItem(item, id, item.updatedAt || Date.now());
+    });
+    saveComponentHistory();
+    (json.equipregistry || []).forEach(([id, type, calibrationDate]) => {
+      equipmentRegistry[id] = { type, calibrationDate };
+    });
+    saveEquipmentRegistry();
+  } catch (e) {
+    items = {};
+    showBanner('Could not load starting data: ' + (e && e.message ? e.message : e) + '. You can still use the app — scan/add items manually — or fix seed-data.json and clear site data to retry.');
+  }
+  saveItems();
+}
+// Hooks the optional cloud sync (cloud-sync.js) attaches to; stay null when sync is off.
+window.__scbaCloud = { onItemsSaved: null, onHistorySaved: null };
+function saveItems() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  if (window.__scbaCloud.onItemsSaved) window.__scbaCloud.onItemsSaved();
+}
+const STALE_PLACEHOLDER_UNITS = ['Portables', 'Spill kits', 'Incident response equipment'];
+function loadUnits() {
+  try { const raw = localStorage.getItem(UNITS_KEY); units = raw ? JSON.parse(raw) : DEFAULT_UNITS.slice(); }
+  catch (e) { units = DEFAULT_UNITS.slice(); }
+  const before = units.length;
+  units = units.filter(u => !STALE_PLACEHOLDER_UNITS.includes(u));
+  if (units.length !== before) saveUnits();
+}
+function saveUnits() { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
+function ensureUnit(name) { if (name && !units.includes(name)) { units.push(name); saveUnits(); } }
+
+// ---------- Component history (per-RFID-tag movement across collection points) ----------
+const COMPONENT_HISTORY_KEY = 'safety_tracker_component_history_v1';
+let componentHistory = {};
+function loadComponentHistory() {
+  try { const raw = localStorage.getItem(COMPONENT_HISTORY_KEY); componentHistory = raw ? JSON.parse(raw) : {}; }
+  catch (e) { componentHistory = {}; }
+}
+function saveComponentHistory() {
+  localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory));
+  if (window.__scbaCloud.onHistorySaved) window.__scbaCloud.onHistorySaved();
+}
+
+// Master reference data (e.g. a calibration spreadsheet) — id -> {type, calibrationDate}.
+// Distinct from componentHistory: this is static reference info, not a log of app usage.
+const EQUIPMENT_REGISTRY_KEY = 'safety_tracker_equipment_registry_v1';
+let equipmentRegistry = {};
+function loadEquipmentRegistry() {
+  try { const raw = localStorage.getItem(EQUIPMENT_REGISTRY_KEY); equipmentRegistry = raw ? JSON.parse(raw) : {}; }
+  catch (e) { equipmentRegistry = {}; }
+}
+function saveEquipmentRegistry() { localStorage.setItem(EQUIPMENT_REGISTRY_KEY, JSON.stringify(equipmentRegistry)); }
+
+// ---------- Monthly archive storage (IndexedDB) ----------
+// Each "Start new month" run snapshots the full items object here, keyed by when it was
+// archived. Uses IndexedDB rather than localStorage because localStorage's ~5-10MB quota
+// would fill up after just a few months of full-dataset snapshots; IndexedDB has much more
+// headroom and stores structured data natively without needing to serialize to a string.
+function openArchiveDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('safety_tracker_archives', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('months')) {
+        db.createObjectStore('months', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveMonthlyArchive(label, itemsSnapshot) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readwrite');
+    tx.objectStore('months').put({ id: Date.now(), label, timestamp: Date.now(), items: itemsSnapshot });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function listMonthlyArchives() {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readonly');
+    const req = tx.objectStore('months').getAll();
+    req.onsuccess = () => resolve(req.result.sort((a, b) => b.timestamp - a.timestamp));
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getMonthlyArchive(id) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readonly');
+    const req = tx.objectStore('months').get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function deleteMonthlyArchive(id) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readwrite');
+    tx.objectStore('months').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function recordComponentLink(componentId, collectionPointId, role, timestamp) {
+  if (!componentId) return;
+  const key = String(componentId).trim();
+  if (!key) return;
+  if (!componentHistory[key]) componentHistory[key] = [];
+  const entries = componentHistory[key];
+  const last = entries[entries.length - 1];
+  // Skip if this is exactly the same collection point + role as last time (nothing actually moved)
+  if (last && last.collectionPointId === collectionPointId && last.role === role) return;
+  entries.push({ collectionPointId, role, timestamp });
+}
+
+function recordComponentLinksForItem(item, collectionPointId, timestamp) {
+  if (item.type === 'SCBA Station') {
+    recordComponentLink(item.scbaFrameId, collectionPointId, 'Frame', timestamp);
+    recordComponentLink(item.scbaCylinderId, collectionPointId, 'Cylinder', timestamp);
+    recordComponentLink(item.scbaLMaskId, collectionPointId, 'L Mask', timestamp);
+    recordComponentLink(item.scbaMMaskId, collectionPointId, 'M Mask', timestamp);
+    recordComponentLink(item.scbaSMaskId, collectionPointId, 'S Mask', timestamp);
+  } else if (item.type === 'SCBA Cylinder') {
+    recordComponentLink(item.stdCylId, collectionPointId, 'Cylinder', timestamp);
+  } else if (item.type === 'SCBA Frame') {
+    recordComponentLink(item.stdFrameId, collectionPointId, 'Frame', timestamp);
+  } else if (item.type === 'SCBA Mask') {
+    recordComponentLink(item.stdMaskId, collectionPointId, (item.stdMaskSize || '') + ' Mask', timestamp);
+  } else if (item.type === 'Mask Cabinet') {
+    recordComponentLink(item.maskCabSarNumber, collectionPointId, 'SAR', timestamp);
+    (item.masks || []).forEach(m => recordComponentLink(m.id, collectionPointId, (m.size || '') + ' Mask', timestamp));
+  }
+}
+
+// ---------- UI helpers ----------
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+function showBanner(msg) {
+  const b = document.getElementById('statusBanner');
+  b.textContent = msg; b.classList.add('show');
+}
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+function escapeAttr(str) { return String(str).replace(/"/g, '&quot;'); }
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  return new Date(ts).toLocaleDateString();
+}
+function itemDisplayName(item, id) {
+  if (item.type === 'Extinguisher') return item.extLocation || id;
+  if (item.type === 'Emergency Light') return item.lightLocation || id;
+  if (item.type === 'Eyewash Station') return item.eyewashLocation || id;
+  if (item.type === 'Spill Kit') return item.spillLocation || id;
+  if (item.type === 'Mask Cabinet') return item.maskCabLocation || id;
+  if (item.type === 'SAR') return item.sarLocation || id;
+  if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
+  if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
+  if (item.type === 'SCBA Frame') return item.stdFrameId || id;
+  if (item.type === 'SCBA Mask') return (item.stdMaskSize ? item.stdMaskSize + ' Mask ' : 'Mask ') + (item.stdMaskId || id);
+  return id;
+}
+function itemInspectionResult(item) {
+  if (item.type === 'Extinguisher') return item.extInspection || '';
+  if (item.type === 'Emergency Light') return item.lightInspection || '';
+  if (item.type === 'Eyewash Station') return item.eyewashInspection || '';
+  if (item.type === 'Spill Kit') return item.spillSeal || '';
+  if (item.type === 'Mask Cabinet') return item.maskCabInspection || '';
+  if (item.type === 'SAR') return item.sarInspection || '';
+  if (item.type === 'SCBA Station') return item.scbaInspection || '';
+  return '';
+}
+function equipmentSnapshot(d) {
+  const snap = [];
+  if (d.type === 'SCBA Station') {
+    if (d.scbaFrameId) snap.push(['Frame', d.scbaFrameId]);
+    if (d.scbaCylinderId) snap.push(['Cylinder', d.scbaCylinderId]);
+    if (d.scbaLMaskId) snap.push(['L Mask', d.scbaLMaskId]);
+    if (d.scbaMMaskId) snap.push(['M Mask', d.scbaMMaskId]);
+    if (d.scbaSMaskId) snap.push(['S Mask', d.scbaSMaskId]);
+  } else if (d.type === 'Mask Cabinet') {
+    (d.masks || []).filter(m => m.id).forEach(m => snap.push([(m.size || '') + ' Mask', m.id]));
+    if (d.maskCabSarNumber) snap.push(['SAR', d.maskCabSarNumber]);
+  }
+  return snap;
+}
+
+function itemSummaryLine(item) {
+  if (item.type === 'Extinguisher') {
+    const p = []; if (item.extWeightAgent) p.push(item.extWeightAgent); if (item.extLastInspected) p.push('Inspected ' + item.extLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'Emergency Light') {
+    const p = []; if (item.lightLastInspected) p.push('Inspected ' + item.lightLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'Eyewash Station') {
+    const p = []; if (item.eyewashLastService) p.push('Serviced ' + item.eyewashLastService); if (item.eyewashLastInspected) p.push('Inspected ' + item.eyewashLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'Spill Kit') {
+    const p = []; if (item.spillBoxCondition) p.push(item.spillBoxCondition); if (item.spillMissingItems && item.spillMissingItems.toLowerCase() !== 'none') p.push('Missing: ' + item.spillMissingItems);
+    return p.join(' · ');
+  }
+  if (item.type === 'Mask Cabinet') {
+    const p = [];
+    const maskCount = (item.masks || []).filter(m => m.id).length;
+    if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
+    if (item.maskCabLastInspected) p.push('Inspected ' + item.maskCabLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'SAR') {
+    const p = []; if (item.sarId) p.push(item.sarId); if (item.sarLastInspected) p.push('Inspected ' + item.sarLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Station') {
+    const p = [];
+    if (item.scbaFrameId) p.push('Frame linked');
+    if (item.scbaCylinderId) p.push('Cyl linked');
+    const maskCount = [item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId].filter(Boolean).length;
+    if (maskCount) p.push(maskCount + ' mask' + (maskCount === 1 ? '' : 's') + ' linked');
+    if (item.scbaLastInspected) p.push('Inspected ' + item.scbaLastInspected);
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Cylinder') {
+    const p = []; if (item.stdCylLastHydro) p.push('Hydro ' + item.stdCylLastHydro); if (item.stdCylPressure) p.push(item.stdCylPressure + ' psi');
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Frame') {
+    const p = []; if (item.stdFrameLastCalibration) p.push('Cal ' + item.stdFrameLastCalibration);
+    return p.join(' · ');
+  }
+  if (item.type === 'SCBA Mask') {
+    const p = []; if (item.stdMaskExpDate) p.push('Exp ' + item.stdMaskExpDate);
+    return p.join(' · ');
+  }
+  return '';
+}
+
+function populateFilters() {
+  const typeSel = document.getElementById('typeFilter');
+  const curType = typeSel.value;
+  typeSel.innerHTML = '<option value="">All types</option>' +
+    ALL_TYPES.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
+  typeSel.value = ALL_TYPES.includes(curType) ? curType : '';
+
+  const unitSel = document.getElementById('unitFilter');
+  const curUnit = unitSel.value;
+  unitSel.innerHTML = '<option value="">All units</option>' +
+    units.map(u => `<option value="${escapeAttr(u)}">${escapeHtml(u)}</option>`).join('');
+  unitSel.value = units.includes(curUnit) ? curUnit : '';
+}
+
+function findMatchingId(value) {
+  if (items[value]) return value;
+  const v = String(value).trim().toLowerCase();
+  if (!v) return null;
+  for (const [id, item] of Object.entries(items)) {
+    if (item.type === 'SCBA Station') {
+      if ([item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId]
+        .some(f => f && String(f).trim().toLowerCase() === v)) {
+        return id;
+      }
+    } else if (item.type === 'Mask Cabinet') {
+      const maskIds = (item.masks || []).map(m => m.id);
+      if ([...maskIds, item.maskCabSarNumber]
+        .some(f => f && String(f).trim().toLowerCase() === v)) {
+        return id;
+      }
+    }
+  }
+  return null;
+}
+
+function itemSearchHay(item, id) {
+  const parts = [itemDisplayName(item, id), item.type, item.unit, id];
+  if (item.type === 'SCBA Station') {
+    parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
+  } else if (item.type === 'Mask Cabinet') {
+    parts.push(...(item.masks || []).map(m => m.id), item.maskCabSarNumber);
+  }
+  return parts.filter(Boolean).join(' ').toLowerCase();
+}
+
+// When filtering by SCBA Frame/Cylinder/Mask, also surface components linked *inside* a
+// Station or Mask Cabinet — not just standalone records. These are "virtual" list entries:
+// tapping View/Edit opens the actual parent record, since that's where the data lives.
+function getLinkedComponentEntries(typeFilter) {
+  const virtual = [];
+  Object.entries(items).forEach(([parentId, item]) => {
+    if (item.type === 'SCBA Station') {
+      const parentLabel = itemDisplayName(item, parentId);
+      if (typeFilter === 'SCBA Frame' && item.scbaFrameId) {
+        const parts = [];
+        if (item.scbaLastCalibration) parts.push('Cal ' + item.scbaLastCalibration);
+        if (item.scbaFrameSerialNumber) parts.push('SN ' + item.scbaFrameSerialNumber);
+        virtual.push({ id: parentId, name: item.scbaFrameId, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      }
+      if (typeFilter === 'SCBA Cylinder' && item.scbaCylinderId) {
+        const parts = [];
+        if (item.scbaLastHydro) parts.push('Hydro ' + item.scbaLastHydro);
+        if (item.scbaPressure) parts.push(item.scbaPressure + ' psi');
+        if (item.scbaCylinderSerialNumber) parts.push('SN ' + item.scbaCylinderSerialNumber);
+        virtual.push({ id: parentId, name: item.scbaCylinderId, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      }
+      if (typeFilter === 'SCBA Mask') {
+        [['scbaLMaskId', 'scbaLMaskExpDate', 'Large'], ['scbaMMaskId', 'scbaMMaskExpDate', 'Medium'], ['scbaSMaskId', 'scbaSMaskExpDate', 'Small']]
+          .forEach(([idField, dateField, sizeLabel]) => {
+            if (item[idField]) {
+              const parts = [sizeLabel + ' Mask'];
+              if (item[dateField]) parts.push(item[dateField]);
+              virtual.push({ id: parentId, name: item[idField], summary: parts.join(' · '), unit: item.unit,
+                result: '', updatedAt: item.updatedAt, via: parentLabel });
+            }
+          });
+      }
+    } else if (item.type === 'Mask Cabinet' && typeFilter === 'SCBA Mask') {
+      const parentLabel = itemDisplayName(item, parentId);
+      (item.masks || []).filter(m => m.id).forEach(m => {
+        const parts = [(m.size || '') + ' Mask'];
+        if (m.expDate) parts.push(m.expDate);
+        virtual.push({ id: parentId, name: m.id, summary: parts.join(' · '), unit: item.unit,
+          result: '', updatedAt: item.updatedAt, via: parentLabel });
+      });
+    }
+  });
+  return virtual;
+}
+
+function renderList() {
+  const listEl = document.getElementById('itemList');
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const typeFilterVal = document.getElementById('typeFilter').value;
+  const unitFilterVal = document.getElementById('unitFilter').value;
+
+  const realEntries = Object.entries(items).filter(([id, item]) => {
+    if (typeFilterVal && item.type !== typeFilterVal) return false;
+    if (unitFilterVal && item.unit !== unitFilterVal) return false;
+    if (!query) return true;
+    const hay = itemSearchHay(item, id);
+    return hay.includes(query);
+  }).map(([id, item]) => ({ id, item, virtual: null }));
+
+  let virtualEntries = [];
+  if (['SCBA Frame', 'SCBA Cylinder', 'SCBA Mask'].includes(typeFilterVal)) {
+    virtualEntries = getLinkedComponentEntries(typeFilterVal).filter(v => {
+      if (unitFilterVal && v.unit !== unitFilterVal) return false;
+      if (!query) return true;
+      return (v.name + ' ' + v.via + ' ' + (v.unit || '')).toLowerCase().includes(query);
+    }).map(v => ({ id: v.id, item: items[v.id], virtual: v }));
+  }
+
+  const entries = [...realEntries, ...virtualEntries]
+    .sort((a, b) => (b.item.updatedAt || 0) - (a.item.updatedAt || 0));
+
+  document.getElementById('itemCount').textContent =
+    Object.keys(items).length + ' item' + (Object.keys(items).length === 1 ? '' : 's') + ' tracked';
+
+  if (entries.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">No items yet — scan a collection point barcode to add one.</div>';
+    return;
+  }
+
+  listEl.innerHTML = entries.map(({ id, item, virtual }) => {
+    const result = virtual ? '' : itemInspectionResult(item);
+    const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
+      : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
+    const name = virtual ? virtual.name : itemDisplayName(item, id);
+    const summary = virtual ? virtual.summary : itemSummaryLine(item);
+    const typeLabel = virtual ? typeFilterVal : item.type;
+    const unitLabel = virtual ? virtual.unit : item.unit;
+    return `
+    <div class="item-card" data-id="${escapeAttr(id)}">
+      <div class="item-info">
+        <div class="item-name">${escapeHtml(name)}</div>
+        <div class="item-meta">${escapeHtml(summary)}</div>
+        <div class="badges">
+          ${typeLabel ? `<span class="badge badge-type">${escapeHtml(typeLabel)}</span>` : ''}
+          ${unitLabel ? `<span class="badge badge-unit">${escapeHtml(unitLabel)}</span>` : ''}
+          ${id.startsWith('UNASSIGNED-') ? '<span class="badge" style="background:#7c3aed;color:#fff;">No location</span>' : ''}
+          ${resultBadge}
+        </div>
+        ${virtual ? `<div class="item-scanned">Linked in: ${escapeHtml(virtual.via)}</div>` : `<div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>`}
+      </div>
+      <div class="item-actions">
+        <button class="viewBtn" data-id="${escapeAttr(id)}">View</button>
+        <button class="editBtn" data-id="${escapeAttr(id)}">Edit</button>
+      </div>
+    </div>
+  `; }).join('');
+
+  listEl.querySelectorAll('.editBtn').forEach(btn => {
+    btn.addEventListener('click', () => openModal(btn.dataset.id));
+  });
+  listEl.querySelectorAll('.viewBtn').forEach(btn => {
+    btn.addEventListener('click', () => openView(btn.dataset.id));
+  });
+}
+
+// ---------- Type toggle ----------
+const NO_UNIT_TYPES = ['SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
+function setType(type) {
+  currentType = type;
+  document.querySelectorAll('#typeToggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+  ALL_TYPES.forEach(t => {
+    document.getElementById('fields-' + t).classList.toggle('active', t === type);
+  });
+  document.getElementById('unitFieldWrapper').style.display = NO_UNIT_TYPES.includes(type) ? 'none' : '';
+}
+document.getElementById('typeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-type]');
+  if (btn) setType(btn.dataset.type);
+});
+
+// ---------- Unit select ----------
+function populateUnitSelect(selected) {
+  const sel = document.getElementById('unitInput');
+  sel.innerHTML = '';
+  units.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u; opt.textContent = u;
+    sel.appendChild(opt);
+  });
+  const addOpt = document.createElement('option');
+  addOpt.value = ADD_NEW_VALUE;
+  addOpt.textContent = '+ Add new unit...';
+  sel.appendChild(addOpt);
+  sel.value = selected && units.includes(selected) ? selected : (units[0] || '');
+}
+document.getElementById('unitInput').addEventListener('change', (e) => {
+  if (e.target.value === ADD_NEW_VALUE) {
+    const name = prompt('New unit name:');
+    const trimmed = (name || '').trim();
+    if (trimmed) { ensureUnit(trimmed); populateUnitSelect(trimmed); populateFilters(); }
+    else { populateUnitSelect(units[0]); }
+  }
+});
+
+// ---------- History ----------
+function formatEquipmentSnapshot(equipment) {
+  if (!equipment || !equipment.length) return '';
+  return equipment.map(([role, id]) => `${role}: ${escapeHtml(id)}`).join(' · ');
+}
+function renderHistory(item) {
+  const section = document.getElementById('historySection');
+  const list = document.getElementById('historyList');
+  const history = (item && item.history) || [];
+  if (!history.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.classList.remove('show');
+  document.getElementById('historyToggle').textContent = 'Show scan history ▾';
+  list.innerHTML = history.slice().reverse().map(h => {
+    const eq = formatEquipmentSnapshot(h.equipment);
+    return `
+    <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <span class="hist-loc">${h.note ? '📅 ' : ''}${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span>${new Date(h.timestamp).toLocaleString()}</span>
+      </div>
+      ${h.note ? `<div style="font-size:11px;color:#fbbf24;">${escapeHtml(h.note)}</div>` : ''}
+      ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
+    </div>
+  `; }).join('');
+}
+document.getElementById('historyToggle').addEventListener('click', () => {
+  const list = document.getElementById('historyList');
+  const toggle = document.getElementById('historyToggle');
+  list.classList.toggle('show');
+  toggle.textContent = list.classList.contains('show') ? 'Hide scan history ▴' : 'Show scan history ▾';
+});
+
+// ---------- Modal ----------
+// ---------- Read-only View ----------
+const VIEW_FIELDS = {
+  'Extinguisher': [['Location','extLocation'],['Weight & Agent','extWeightAgent'],['Serial Number','extSerialNumber'],['Manufactured Date','extManufacturedDate'],['Inspection','extInspection'],['Last Inspected','extLastInspected'],['Comments','extComments']],
+  'Emergency Light': [['Location','lightLocation'],['Inspection','lightInspection'],['Last Inspected','lightLastInspected'],['Comments','lightComments']],
+  'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
+  'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
+  'Mask Cabinet': [['Location','maskCabLocation'],['Cabinet Condition','maskCabCondition'],
+    ['SAR Number','maskCabSarNumber'],['Mask Box','maskCabBox'],
+    ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
+  'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
+  'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
+    ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],['Frame Serial Number','scbaFrameSerialNumber'],
+    ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],['Cylinder Serial Number','scbaCylinderSerialNumber'],['Cylinder Manufactured Date','scbaCylinderManufacturedDate'],
+    ['L Mask RFID','scbaLMaskId'],['L Mask Date','scbaLMaskExpDate'],
+    ['M Mask RFID','scbaMMaskId'],['M Mask Date','scbaMMaskExpDate'],
+    ['S Mask RFID','scbaSMaskId'],['S Mask Date','scbaSMaskExpDate'],
+    ['Inspection','scbaInspection'],['Last Inspected','scbaLastInspected'],['Comments','scbaComments']],
+  'SCBA Cylinder': [['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Manufactured Date','stdCylManufacturedDate'],['Comments','stdCylComments']],
+  'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Serial Number','stdFrameSerialNumber'],['Comments','stdFrameComments']],
+  'SCBA Mask': [['Size','stdMaskSize'],['Mask RFID','stdMaskId'],['EXP Date','stdMaskExpDate'],['Comments','stdMaskComments']]
+};
+
+let viewingId = null;
+function openView(id) {
+  const item = items[id];
+  if (!item) return;
+  viewingId = id;
+  document.getElementById('viewTitle').textContent = itemDisplayName(item, id);
+  const sub = [];
+  if (!id.startsWith('UNASSIGNED-')) sub.push('ID: ' + id);
+  if (item.unit) sub.push(item.unit);
+  sub.push(item.type);
+  document.getElementById('viewSubtitle').textContent = sub.join(' · ');
+
+  const fields = VIEW_FIELDS[item.type] || [];
+  const container = document.getElementById('viewFieldsContainer');
+  let masksHtml = '';
+  if (item.type === 'Mask Cabinet' && Array.isArray(item.masks) && item.masks.length) {
+    masksHtml = '<div class="subsection-label">Masks (' + item.masks.length + ')</div>' +
+      item.masks.filter(m => m.id).map(m => `
+        <div class="view-row">
+          <span class="view-label">${escapeHtml(m.size || '')} Mask</span>
+          <span class="view-value">${escapeHtml(m.id)}${m.expDate ? ' · ' + escapeHtml(m.expDate) : ''}</span>
+        </div>
+      `).join('');
+  }
+  container.innerHTML = masksHtml + (fields
+    .filter(([, key]) => item[key])
+    .map(([label, key]) => `
+      <div class="view-row">
+        <span class="view-label">${escapeHtml(label)}</span>
+        <span class="view-value">${escapeHtml(item[key])}</span>
+      </div>
+    `).join('') || (masksHtml ? '' : '<div class="empty-state" style="padding:16px 0;">No details recorded yet</div>'));
+
+  renderViewHistory(item);
+  document.getElementById('viewOverlay').classList.add('show');
+}
+function renderViewHistory(item) {
+  const section = document.getElementById('viewHistorySection');
+  const list = document.getElementById('viewHistoryList');
+  const history = (item && item.history) || [];
+  if (!history.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.classList.remove('show');
+  document.getElementById('viewHistoryToggle').textContent = 'Show scan history ▾';
+  list.innerHTML = history.slice().reverse().map(h => {
+    const eq = formatEquipmentSnapshot(h.equipment);
+    return `
+    <div class="history-row" style="flex-direction:column;align-items:flex-start;gap:2px;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <span class="hist-loc">${h.note ? '📅 ' : ''}${escapeHtml(h.location || '—')}${h.result ? ' — ' + escapeHtml(h.result) : ''}</span>
+        <span>${new Date(h.timestamp).toLocaleString()}</span>
+      </div>
+      ${h.note ? `<div style="font-size:11px;color:#fbbf24;">${escapeHtml(h.note)}</div>` : ''}
+      ${eq ? `<div style="font-size:11px;color:var(--text-dim);">${eq}</div>` : ''}
+    </div>
+  `; }).join('');
+}
+document.getElementById('viewHistoryToggle').addEventListener('click', () => {
+  const list = document.getElementById('viewHistoryList');
+  const toggle = document.getElementById('viewHistoryToggle');
+  list.classList.toggle('show');
+  toggle.textContent = list.classList.contains('show') ? 'Hide scan history ▴' : 'Show scan history ▾';
+});
+document.getElementById('viewCloseBtn').addEventListener('click', () => {
+  document.getElementById('viewOverlay').classList.remove('show');
+  viewingId = null;
+});
+document.getElementById('viewOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'viewOverlay') {
+    document.getElementById('viewOverlay').classList.remove('show');
+    viewingId = null;
+  }
+});
+document.getElementById('viewEditBtn').addEventListener('click', () => {
+  const id = viewingId;
+  document.getElementById('viewOverlay').classList.remove('show');
+  viewingId = null;
+  if (id) openModal(id);
+});
+
+// ---------- Mask Cabinet: dynamic mask list (any number of masks per cabinet) ----------
+let maskCabRows = []; // working array while the modal is open: [{size, id, expDate}]
+
+function maskRowFieldId(idx, field) { return 'maskRow' + idx + '_' + field; }
+
+function renderMaskCabRows() {
+  const container = document.getElementById('maskCabRowsContainer');
+  container.innerHTML = maskCabRows.map((row, idx) => {
+    const idFieldId = maskRowFieldId(idx, 'id');
+    const dateFieldId = maskRowFieldId(idx, 'date');
+    const sizeFieldId = maskRowFieldId(idx, 'size');
+    return `
+      <div class="mask-row" data-idx="${idx}">
+        <div class="mask-row-header">
+          <select id="${sizeFieldId}" data-idx="${idx}" data-field="size">
+            <option value="Large" ${row.size === 'Large' ? 'selected' : ''}>Large</option>
+            <option value="Medium" ${row.size === 'Medium' ? 'selected' : ''}>Medium</option>
+            <option value="Small" ${row.size === 'Small' ? 'selected' : ''}>Small</option>
+            <option value="Other" ${row.size === 'Other' ? 'selected' : ''}>Other</option>
+          </select>
+          <button type="button" class="mask-row-remove" data-idx="${idx}" title="Remove this mask">✕</button>
+        </div>
+        <div class="input-with-scan">
+          <input type="text" id="${idFieldId}" data-idx="${idx}" data-field="id" placeholder="Tap 📡 to scan" value="${escapeAttr(row.id || '')}">
+          <button type="button" class="scan-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Read tag">📡</button>
+          <button type="button" class="scan-cam-btn" data-target="${idFieldId}" data-size-target="${sizeFieldId}" data-date-target="${dateFieldId}" title="Scan barcode">📷</button>
+          <button type="button" class="write-nfc-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Write ID to tag">✏️</button>
+          <button type="button" class="write-date-btn" data-target="${idFieldId}" data-date-target="${dateFieldId}" data-size-target="${sizeFieldId}" title="Update date only">📅</button>
+        </div>
+        <div class="mask-row-date">
+          <label>Calibration/EXP Date</label>
+          <input type="date" id="${dateFieldId}" data-idx="${idx}" data-field="date" value="${escapeAttr(row.expDate || '')}">
+        </div>
+      </div>
+    `;
+  }).join('') || '<div class="empty-state" style="padding:12px 0;">No masks added yet</div>';
+}
+
+document.getElementById('maskCabRowsContainer').addEventListener('input', (e) => {
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if (idx === undefined || !field) return;
+  const i = parseInt(idx, 10);
+  if (!maskCabRows[i]) return;
+  if (field === 'id') maskCabRows[i].id = e.target.value.trim();
+  if (field === 'date') maskCabRows[i].expDate = e.target.value;
+});
+document.getElementById('maskCabRowsContainer').addEventListener('change', (e) => {
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if (idx === undefined || !field) return;
+  const i = parseInt(idx, 10);
+  if (!maskCabRows[i]) return;
+  if (field === 'size') maskCabRows[i].size = e.target.value;
+});
+document.getElementById('maskCabRowsContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mask-row-remove');
+  if (!btn) return;
+  const i = parseInt(btn.dataset.idx, 10);
+  maskCabRows.splice(i, 1);
+  renderMaskCabRows();
+});
+document.getElementById('maskCabAddRowBtn').addEventListener('click', () => {
+  maskCabRows.push({ size: 'Large', id: '', expDate: '' });
+  renderMaskCabRows();
+});
+
+function openModal(id) {
+  currentId = id;
+  const existing = items[id];
+  document.getElementById('modalTitle').textContent = existing ? 'Edit Item' : 'New Item';
+  document.getElementById('modalTagId').textContent = id.startsWith('UNASSIGNED-')
+    ? 'Not yet at a location — link its RFID/barcode below when you have it'
+    : 'ID: ' + id;
+
+  const regEntry = !existing ? equipmentRegistry[String(id).trim()] : null;
+  const regDefaultType = regEntry
+    ? (regEntry.type === 'Frame' ? 'SCBA Frame'
+      : regEntry.type === 'Cylinder' ? 'SCBA Cylinder'
+      : ['Large', 'Medium', 'Small'].includes(regEntry.type) ? 'SCBA Mask' : null)
+    : null;
+  const defaultType = existing?.type || regDefaultType || 'Extinguisher';
+  setType(defaultType);
+  populateUnitSelect(existing?.unit);
+
+  document.getElementById('extLocationInput').value = existing?.extLocation || '';
+  document.getElementById('extWeightAgentInput').value = existing?.extWeightAgent || '';
+  document.getElementById('extSerialNumberInput').value = existing?.extSerialNumber || '';
+  document.getElementById('extManufacturedDateInput').value = existing?.extManufacturedDate || '';
+  document.getElementById('extInspectionInput').value = existing?.extInspection || '';
+  document.getElementById('extLastInspectedInput').value = existing?.extLastInspected || '';
+  document.getElementById('extCommentsInput').value = existing?.extComments || '';
+
+  document.getElementById('lightLocationInput').value = existing?.lightLocation || '';
+  document.getElementById('lightInspectionInput').value = existing?.lightInspection || '';
+  document.getElementById('lightLastInspectedInput').value = existing?.lightLastInspected || '';
+  document.getElementById('lightCommentsInput').value = existing?.lightComments || '';
+
+  document.getElementById('eyewashLocationInput').value = existing?.eyewashLocation || '';
+  document.getElementById('eyewashInspectionInput').value = existing?.eyewashInspection || '';
+  document.getElementById('eyewashLastServiceInput').value = existing?.eyewashLastService || '';
+  document.getElementById('eyewashLastInspectedInput').value = existing?.eyewashLastInspected || '';
+  document.getElementById('eyewashCommentsInput').value = existing?.eyewashComments || '';
+
+  document.getElementById('spillLocationInput').value = existing?.spillLocation || '';
+  document.getElementById('spillSealInput').value = existing?.spillSeal || '';
+  document.getElementById('spillMissingItemsInput').value = existing?.spillMissingItems || '';
+  document.getElementById('spillBoxConditionInput').value = existing?.spillBoxCondition || '';
+  document.getElementById('spillLastInspectedInput').value = existing?.spillLastInspected || '';
+  document.getElementById('spillCommentsInput').value = existing?.spillComments || '';
+
+  document.getElementById('maskCabLocationInput').value = existing?.maskCabLocation || '';
+  document.getElementById('maskCabConditionInput').value = existing?.maskCabCondition || '';
+  if (existing && Array.isArray(existing.masks)) {
+    maskCabRows = existing.masks.map(m => ({ size: m.size || 'Large', id: m.id || '', expDate: m.expDate || '' }));
+  } else if (existing && (existing.maskCabLId || existing.maskCabMId || existing.maskCabSId)) {
+    // migrate old fixed L/M/S format from before masks became a dynamic list
+    maskCabRows = [];
+    if (existing.maskCabLId) maskCabRows.push({ size: 'Large', id: existing.maskCabLId, expDate: existing.maskCabLExpDate || '' });
+    if (existing.maskCabMId) maskCabRows.push({ size: 'Medium', id: existing.maskCabMId, expDate: existing.maskCabMExpDate || '' });
+    if (existing.maskCabSId) maskCabRows.push({ size: 'Small', id: existing.maskCabSId, expDate: existing.maskCabSExpDate || '' });
+  } else {
+    maskCabRows = [];
+  }
+  renderMaskCabRows();
+  document.getElementById('maskCabSarNumberInput').value = existing?.maskCabSarNumber || '';
+  document.getElementById('maskCabBoxInput').value = existing?.maskCabBox || '';
+  document.getElementById('maskCabInspectionInput').value = existing?.maskCabInspection || '';
+  document.getElementById('maskCabLastInspectedInput').value = existing?.maskCabLastInspected || '';
+  document.getElementById('maskCabCommentsInput').value = existing?.maskCabComments || '';
+
+  document.getElementById('sarLocationInput').value = existing?.sarLocation || '';
+  document.getElementById('sarIdInput').value = existing?.sarId || '';
+  document.getElementById('sarInspectionInput').value = existing?.sarInspection || '';
+  document.getElementById('sarLastInspectedInput').value = existing?.sarLastInspected || '';
+  document.getElementById('sarCommentsInput').value = existing?.sarComments || '';
+
+  document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
+  document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
+  document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
+  document.getElementById('scbaLastCalibrationInput').value = existing?.scbaLastCalibration || '';
+  document.getElementById('scbaFrameSerialNumberInput').value = existing?.scbaFrameSerialNumber || '';
+  document.getElementById('scbaCylinderIdInput').value = existing?.scbaCylinderId || '';
+  document.getElementById('scbaLastHydroInput').value = existing?.scbaLastHydro || '';
+  document.getElementById('scbaPressureInput').value = existing?.scbaPressure || '';
+  document.getElementById('scbaCylinderSerialNumberInput').value = existing?.scbaCylinderSerialNumber || '';
+  document.getElementById('scbaCylinderManufacturedDateInput').value = existing?.scbaCylinderManufacturedDate || '';
+  document.getElementById('scbaLMaskIdInput').value = existing?.scbaLMaskId || '';
+  document.getElementById('scbaLMaskExpDateInput').value = existing?.scbaLMaskExpDate || '';
+  document.getElementById('scbaMMaskIdInput').value = existing?.scbaMMaskId || '';
+  document.getElementById('scbaMMaskExpDateInput').value = existing?.scbaMMaskExpDate || '';
+  document.getElementById('scbaSMaskIdInput').value = existing?.scbaSMaskId || '';
+  document.getElementById('scbaSMaskExpDateInput').value = existing?.scbaSMaskExpDate || '';
+  document.getElementById('scbaInspectionInput').value = existing?.scbaInspection || '';
+  document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
+  document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
+
+  document.getElementById('stdCylIdInput').value = existing?.stdCylId || '';
+  document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || (!existing ? getKnownDateForComponent(id) : null) || '';
+  document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
+  document.getElementById('stdCylSerialNumberInput').value = existing?.stdCylSerialNumber || '';
+  document.getElementById('stdCylManufacturedDateInput').value = existing?.stdCylManufacturedDate || '';
+  document.getElementById('stdCylCommentsInput').value = existing?.stdCylComments || '';
+
+  document.getElementById('stdFrameIdInput').value = existing?.stdFrameId || '';
+  document.getElementById('stdFrameLastCalibrationInput').value = existing?.stdFrameLastCalibration || (!existing ? getKnownDateForComponent(id) : null) || '';
+  document.getElementById('stdFrameSerialNumberInput').value = existing?.stdFrameSerialNumber || '';
+  document.getElementById('stdFrameCommentsInput').value = existing?.stdFrameComments || '';
+
+  document.getElementById('stdMaskSizeInput').value = existing?.stdMaskSize || (!existing ? getKnownSizeForComponent(id) : null) || 'Large';
+  document.getElementById('stdMaskIdInput').value = existing?.stdMaskId || '';
+  document.getElementById('stdMaskExpDateInput').value = existing?.stdMaskExpDate || (!existing ? getKnownDateForComponent(id) : null) || '';
+  document.getElementById('stdMaskCommentsInput').value = existing?.stdMaskComments || '';
+
+  renderHistory(existing);
+  document.getElementById('deleteItemBtn').style.display = existing ? 'block' : 'none';
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  currentId = null;
+}
+document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modalOverlay') closeModal();
+});
+
+document.getElementById('saveItemBtn').addEventListener('click', () => {
+  if (!currentId) return;
+  const unit = NO_UNIT_TYPES.includes(currentType) ? '' : document.getElementById('unitInput').value;
+  if (unit && unit !== ADD_NEW_VALUE) ensureUnit(unit);
+
+  const draft = {
+    type: currentType,
+    unit,
+    extLocation: document.getElementById('extLocationInput').value.trim(),
+    extWeightAgent: document.getElementById('extWeightAgentInput').value.trim(),
+    extSerialNumber: document.getElementById('extSerialNumberInput').value.trim(),
+    extManufacturedDate: document.getElementById('extManufacturedDateInput').value,
+    extInspection: document.getElementById('extInspectionInput').value,
+    extLastInspected: document.getElementById('extLastInspectedInput').value,
+    extComments: document.getElementById('extCommentsInput').value.trim(),
+
+    lightLocation: document.getElementById('lightLocationInput').value.trim(),
+    lightInspection: document.getElementById('lightInspectionInput').value,
+    lightLastInspected: document.getElementById('lightLastInspectedInput').value,
+    lightComments: document.getElementById('lightCommentsInput').value.trim(),
+
+    eyewashLocation: document.getElementById('eyewashLocationInput').value.trim(),
+    eyewashInspection: document.getElementById('eyewashInspectionInput').value,
+    eyewashLastService: document.getElementById('eyewashLastServiceInput').value,
+    eyewashLastInspected: document.getElementById('eyewashLastInspectedInput').value,
+    eyewashComments: document.getElementById('eyewashCommentsInput').value.trim(),
+
+    spillLocation: document.getElementById('spillLocationInput').value.trim(),
+    spillSeal: document.getElementById('spillSealInput').value,
+    spillMissingItems: document.getElementById('spillMissingItemsInput').value.trim(),
+    spillBoxCondition: document.getElementById('spillBoxConditionInput').value.trim(),
+    spillLastInspected: document.getElementById('spillLastInspectedInput').value,
+    spillComments: document.getElementById('spillCommentsInput').value.trim(),
+
+    maskCabLocation: document.getElementById('maskCabLocationInput').value.trim(),
+    maskCabCondition: document.getElementById('maskCabConditionInput').value,
+    masks: maskCabRows.filter(m => m.id || m.expDate).map(m => ({ size: m.size, id: m.id, expDate: m.expDate })),
+    maskCabSarNumber: document.getElementById('maskCabSarNumberInput').value.trim(),
+    maskCabBox: document.getElementById('maskCabBoxInput').value,
+    maskCabInspection: document.getElementById('maskCabInspectionInput').value,
+    maskCabLastInspected: document.getElementById('maskCabLastInspectedInput').value,
+    maskCabComments: document.getElementById('maskCabCommentsInput').value.trim(),
+
+    sarLocation: document.getElementById('sarLocationInput').value.trim(),
+    sarId: document.getElementById('sarIdInput').value.trim(),
+    sarInspection: document.getElementById('sarInspectionInput').value,
+    sarLastInspected: document.getElementById('sarLastInspectedInput').value,
+    sarComments: document.getElementById('sarCommentsInput').value.trim(),
+
+    scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
+    scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
+    scbaFrameId: document.getElementById('scbaFrameIdInput').value.trim(),
+    scbaLastCalibration: document.getElementById('scbaLastCalibrationInput').value,
+    scbaFrameSerialNumber: document.getElementById('scbaFrameSerialNumberInput').value.trim(),
+    scbaCylinderId: document.getElementById('scbaCylinderIdInput').value.trim(),
+    scbaLastHydro: document.getElementById('scbaLastHydroInput').value,
+    scbaPressure: document.getElementById('scbaPressureInput').value,
+    scbaCylinderSerialNumber: document.getElementById('scbaCylinderSerialNumberInput').value.trim(),
+    scbaCylinderManufacturedDate: document.getElementById('scbaCylinderManufacturedDateInput').value,
+    scbaLMaskId: document.getElementById('scbaLMaskIdInput').value.trim(),
+    scbaLMaskExpDate: document.getElementById('scbaLMaskExpDateInput').value,
+    scbaMMaskId: document.getElementById('scbaMMaskIdInput').value.trim(),
+    scbaMMaskExpDate: document.getElementById('scbaMMaskExpDateInput').value,
+    scbaSMaskId: document.getElementById('scbaSMaskIdInput').value.trim(),
+    scbaSMaskExpDate: document.getElementById('scbaSMaskExpDateInput').value,
+    scbaInspection: document.getElementById('scbaInspectionInput').value,
+    scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
+    scbaComments: document.getElementById('scbaCommentsInput').value.trim(),
+
+    stdCylId: document.getElementById('stdCylIdInput').value.trim(),
+    stdCylLastHydro: document.getElementById('stdCylLastHydroInput').value,
+    stdCylPressure: document.getElementById('stdCylPressureInput').value,
+    stdCylSerialNumber: document.getElementById('stdCylSerialNumberInput').value.trim(),
+    stdCylManufacturedDate: document.getElementById('stdCylManufacturedDateInput').value,
+    stdCylComments: document.getElementById('stdCylCommentsInput').value.trim(),
+
+    stdFrameId: document.getElementById('stdFrameIdInput').value.trim(),
+    stdFrameLastCalibration: document.getElementById('stdFrameLastCalibrationInput').value,
+    stdFrameSerialNumber: document.getElementById('stdFrameSerialNumberInput').value.trim(),
+    stdFrameComments: document.getElementById('stdFrameCommentsInput').value.trim(),
+
+    stdMaskSize: document.getElementById('stdMaskSizeInput').value,
+    stdMaskId: document.getElementById('stdMaskIdInput').value.trim(),
+    stdMaskExpDate: document.getElementById('stdMaskExpDateInput').value,
+    stdMaskComments: document.getElementById('stdMaskCommentsInput').value.trim()
+  };
+
+  // For standalone equipment, the outer scanned barcode/tag almost always IS the item's own
+  // identifier. If the inner RFID field was left blank (no separate tag scanned into the form),
+  // default it to the outer ID so this item's size/history is tracked under the barcode that
+  // was actually scanned, not silently lost.
+  if (draft.type === 'SCBA Cylinder' && !draft.stdCylId) draft.stdCylId = currentId;
+  if (draft.type === 'SCBA Frame' && !draft.stdFrameId) draft.stdFrameId = currentId;
+  if (draft.type === 'SCBA Mask' && !draft.stdMaskId) draft.stdMaskId = currentId;
+
+  const now = Date.now();
+  const existing = items[currentId];
+  const history = existing?.history ? existing.history.slice() : [];
+  history.push({
+    location: itemDisplayName(draft, currentId),
+    result: itemInspectionResult(draft),
+    timestamp: now,
+    equipment: equipmentSnapshot(draft)
+  });
+
+  items[currentId] = { ...draft, history, updatedAt: now, createdAt: existing?.createdAt || now };
+  recordComponentLinksForItem(draft, currentId, now);
+  saveComponentHistory();
+  saveItems();
+  populateFilters();
+  renderList();
+  closeModal();
+  showToast('Saved');
+});
+
+document.getElementById('deleteItemBtn').addEventListener('click', () => {
+  if (!currentId) return;
+  delete items[currentId];
+  saveItems();
+  renderList();
+  closeModal();
+  showToast('Deleted');
+});
+
+document.getElementById('searchInput').addEventListener('input', renderList);
+document.getElementById('typeFilter').addEventListener('change', renderList);
+document.getElementById('unitFilter').addEventListener('change', renderList);
+
+// ---------- XLSX export (matches the original per-Unit workbook layout) ----------
+// A minimal, dependency-free XLSX writer: builds a valid ZIP + OOXML spreadsheet entirely
+// in-page. No external library — keeps the strict Content-Security-Policy intact and avoids
+// the reliability issues an external CDN dependency caused previously.
+const XLSX_CRC_TABLE = (() => {
+  const table = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+function xlsxCrc32(buf) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) crc = XLSX_CRC_TABLE[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function xlsxStrToBytes(str) { return new TextEncoder().encode(str); }
+function xlsxU16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+function xlsxU32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
+
+function xlsxBuildZip(files) {
+  const localParts = [], centralParts = [];
+  let offset = 0;
+  const dosTime = 0, dosDate = 0x21;
+  for (const f of files) {
+    const nameBytes = xlsxStrToBytes(f.name);
+    const data = f.data;
+    const crc = xlsxCrc32(data);
+    const size = data.length;
+    const localHeader = [
+      ...xlsxU32(0x04034b50), ...xlsxU16(20), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU16(dosTime), ...xlsxU16(dosDate),
+      ...xlsxU32(crc), ...xlsxU32(size), ...xlsxU32(size),
+      ...xlsxU16(nameBytes.length), ...xlsxU16(0)
+    ];
+    const localEntry = new Uint8Array(localHeader.length + nameBytes.length + data.length);
+    localEntry.set(localHeader, 0);
+    localEntry.set(nameBytes, localHeader.length);
+    localEntry.set(data, localHeader.length + nameBytes.length);
+    localParts.push(localEntry);
+    const centralHeader = [
+      ...xlsxU32(0x02014b50), ...xlsxU16(20), ...xlsxU16(20), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU16(dosTime), ...xlsxU16(dosDate),
+      ...xlsxU32(crc), ...xlsxU32(size), ...xlsxU32(size),
+      ...xlsxU16(nameBytes.length), ...xlsxU16(0), ...xlsxU16(0), ...xlsxU16(0), ...xlsxU16(0),
+      ...xlsxU32(0), ...xlsxU32(offset)
+    ];
+    const centralEntry = new Uint8Array(centralHeader.length + nameBytes.length);
+    centralEntry.set(centralHeader, 0);
+    centralEntry.set(nameBytes, centralHeader.length);
+    centralParts.push(centralEntry);
+    offset += localEntry.length;
+  }
+  const centralStart = offset;
+  let centralSize = 0;
+  for (const c of centralParts) centralSize += c.length;
+  const endRecord = new Uint8Array([
+    ...xlsxU32(0x06054b50), ...xlsxU16(0), ...xlsxU16(0),
+    ...xlsxU16(files.length), ...xlsxU16(files.length),
+    ...xlsxU32(centralSize), ...xlsxU32(centralStart), ...xlsxU16(0)
+  ]);
+  const out = new Uint8Array(offset + centralSize + endRecord.length);
+  let pos = 0;
+  for (const l of localParts) { out.set(l, pos); pos += l.length; }
+  for (const c of centralParts) { out.set(c, pos); pos += c.length; }
+  out.set(endRecord, pos);
+  return out;
+}
+function xlsxEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function xlsxColLetter(n) {
+  let s = ''; n++;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+function xlsxSafeSheetName(name, usedNames) {
+  let base = String(name).replace(/[\\/*?:[\]]/g, ' ').trim().slice(0, 31) || 'Sheet';
+  let candidate = base, n = 1;
+  while (usedNames.has(candidate)) { candidate = (base.slice(0, 28) + '_' + (++n)); }
+  usedNames.add(candidate);
+  return candidate;
+}
+function xlsxWorksheetXml(rows) {
+  let rowsXml = '';
+  rows.forEach((row, rIdx) => {
+    const r = rIdx + 1;
+    let cellsXml = '';
+    row.forEach((val, cIdx) => {
+      if (val === null || val === undefined || val === '') return;
+      const ref = xlsxColLetter(cIdx) + r;
+      if (typeof val === 'number' && isFinite(val)) {
+        cellsXml += `<c r="${ref}"><v>${val}</v></c>`;
+      } else {
+        cellsXml += `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xlsxEscape(val)}</t></is></c>`;
+      }
+    });
+    if (cellsXml) rowsXml += `<row r="${r}">${cellsXml}</row>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowsXml}</sheetData></worksheet>`;
+}
+function buildXlsxFile(sheets) {
+  // sheets: [{name, rows: [[cell,...], ...]}]
+  const usedNames = new Set();
+  const safeSheets = sheets.map(s => ({ name: xlsxSafeSheetName(s.name, usedNames), rows: s.rows }));
+  const files = [];
+  files.push({ name: '[Content_Types].xml', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${safeSheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`) });
+  files.push({ name: '_rels/.rels', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`) });
+  files.push({ name: 'xl/workbook.xml', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safeSheets.map((s, i) => `<sheet name="${xlsxEscape(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`) });
+  files.push({ name: 'xl/_rels/workbook.xml.rels', data: xlsxStrToBytes(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${safeSheets.map((s, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}</Relationships>`) });
+  safeSheets.forEach((s, i) => {
+    files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: xlsxStrToBytes(xlsxWorksheetXml(s.rows)) });
+  });
+  return xlsxBuildZip(files);
+}
+
+function combinedLabel(id, text) {
+  return text ? (id + ' ' + text) : id;
+}
+
+function buildXlsxSheetsFromItems(itemsObj) {
+  const allItems = Object.entries(itemsObj);
+
+  // ---- Per-unit sheets, matching the original workbook's 3 side-by-side column blocks ----
+  const units = new Set();
+  allItems.forEach(([id, i]) => {
+    if ((i.type === 'Extinguisher' || i.type === 'Emergency Light' || i.type === 'SCBA Station') && i.unit) units.add(i.unit);
+  });
+
+  const sheets = [];
+  Array.from(units).sort().forEach(unit => {
+    const extRows = allItems.filter(([, i]) => i.type === 'Extinguisher' && i.unit === unit)
+      .map(([id, i]) => [i.extLocation, i.extWeightAgent, id, i.extInspection, i.extComments, i.extLastInspected, i.extSerialNumber, i.extManufacturedDate]);
+    const lightRows = allItems.filter(([, i]) => i.type === 'Emergency Light' && i.unit === unit)
+      .map(([id, i]) => [combinedLabel(id, i.lightLocation), i.lightInspection, i.lightComments, i.lightLastInspected]);
+    const scbaRows = allItems.filter(([, i]) => i.type === 'SCBA Station' && i.unit === unit)
+      .map(([id, i]) => [combinedLabel(id, i.scbaCabinetLocation), i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration, i.scbaFrameSerialNumber,
+        i.scbaCylinderId, i.scbaLastHydro, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate, i.scbaInspection, i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaComments, i.scbaLastInspected]);
+
+    const maxRows = Math.max(extRows.length, lightRows.length, scbaRows.length);
+    const header = [
+      'Location', 'Weight & Agent', 'Barcode', 'General inspection', 'Comments', 'Last inspected', 'Serial Number', 'Manufactured Date', '',
+      'Light barcode and location', 'General inspection', 'Comments', 'Last inspected', '',
+      'Cabinet barcode and location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Frame Serial Number', 'Cylinder barcode',
+      'Last hydro', 'Cylinder Serial Number', 'Cylinder Manufactured Date', 'SCBA general inspection', 'L mask', 'M mask', 'S mask', 'Comments', 'Last inspected'
+    ];
+    const rows = [header];
+    for (let r = 0; r < maxRows; r++) {
+      const row = new Array(header.length).fill('');
+      const e = extRows[r]; if (e) for (let c = 0; c < e.length; c++) row[c] = e[c];
+      const l = lightRows[r]; if (l) for (let c = 0; c < l.length; c++) row[9 + c] = l[c];
+      const s = scbaRows[r]; if (s) for (let c = 0; c < s.length; c++) row[14 + c] = s[c];
+      rows.push(row);
+    }
+    if (rows.length > 1) sheets.push({ name: unit, rows });
+  });
+
+  // ---- Separate sheets for equipment types that weren't part of the original workbook ----
+  function addSimpleSheet(name, type, columns, headers) {
+    const rows = allItems.filter(([, i]) => i.type === type).map(([id, i]) => columns.map(c => c === '__id__' ? id : i[c]));
+    if (rows.length) sheets.push({ name, rows: [headers, ...rows] });
+  }
+  addSimpleSheet('Eyewash Stations', 'Eyewash Station', ['eyewashLocation', 'eyewashInspection', 'eyewashLastService', 'eyewashLastInspected', 'eyewashComments'],
+    ['Location', 'General inspection', 'Last service', 'Last inspected', 'Comments']);
+  addSimpleSheet('Spill Kits', 'Spill Kit', ['spillLocation', 'spillSeal', 'spillMissingItems', 'spillBoxCondition', 'spillLastInspected', 'spillComments'],
+    ['Location', 'Car seal intact', 'Missing items', 'Box condition', 'Last inspected', 'Comments']);
+  addSimpleSheet('SAR', 'SAR', ['sarLocation', 'sarId', 'sarInspection', 'sarLastInspected', 'sarComments'],
+    ['Location', 'RFID/Barcode', 'General inspection', 'Last inspected', 'Comments']);
+  addSimpleSheet('SCBA Cylinders (standalone)', 'SCBA Cylinder', ['stdCylId', 'stdCylLastHydro', 'stdCylPressure', 'stdCylSerialNumber', 'stdCylManufacturedDate', 'stdCylComments'],
+    ['Cylinder RFID', 'Last hydro', 'Pressure', 'Serial Number', 'Manufactured Date', 'Comments']);
+  addSimpleSheet('SCBA Frames (standalone)', 'SCBA Frame', ['stdFrameId', 'stdFrameLastCalibration', 'stdFrameSerialNumber', 'stdFrameComments'],
+    ['Frame RFID', 'Last calibration', 'Serial Number', 'Comments']);
+  addSimpleSheet('SCBA Masks (standalone)', 'SCBA Mask', ['stdMaskSize', 'stdMaskId', 'stdMaskExpDate', 'stdMaskComments'],
+    ['Size', 'Mask RFID', 'Calibration/EXP date', 'Comments']);
+
+  const maskCabRows = allItems.filter(([, i]) => i.type === 'Mask Cabinet').map(([id, i]) => [
+    i.unit, combinedLabel(id, i.maskCabLocation), i.maskCabCondition,
+    (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+    i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments
+  ]);
+  if (maskCabRows.length) sheets.push({ name: 'Mask Cabinets', rows: [
+    ['Unit', 'Cabinet barcode and location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
+    ...maskCabRows
+  ]});
+
+  if (!sheets.length) sheets.push({ name: 'Sheet1', rows: [['No items yet']] });
+  return sheets;
+}
+
+function downloadXlsxFromItems(itemsObj, filenamePrefix) {
+  const sheets = buildXlsxSheetsFromItems(itemsObj);
+  const bytes = buildXlsxFile(sheets);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (filenamePrefix || 'safety_equipment') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('XLSX downloaded — ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's'));
+}
+
+document.getElementById('exportXlsxBtn').addEventListener('click', () => {
+  downloadXlsxFromItems(items, 'safety_equipment');
+});
+
+// ---------- Download a single equipment type ----------
+const DOWNLOAD_TYPES = [
+  { key: 'station', label: '🧯 SCBA Stations (full packs)', file: 'scba_stations' },
+  { key: 'cylinder', label: '🛢️ SCBA Cylinders (all)', file: 'scba_cylinders' },
+  { key: 'frame', label: '🎒 SCBA Frames (all)', file: 'scba_frames' },
+  { key: 'mask', label: '😷 SCBA Masks (all)', file: 'scba_masks' },
+  { key: 'maskcab', label: '🗄️ Mask Cabinets', file: 'mask_cabinets' },
+  { key: 'ext', label: '🔴 Extinguishers', file: 'extinguishers' },
+  { key: 'light', label: '💡 Emergency Lights', file: 'emergency_lights' },
+  { key: 'eyewash', label: '🚿 Eyewash Stations', file: 'eyewash_stations' },
+  { key: 'spill', label: '🧰 Spill Kits', file: 'spill_kits' },
+  { key: 'sar', label: '🌬️ SAR', file: 'sar' }
+];
+
+function buildTypeSheet(key, itemsObj) {
+  const all = Object.entries(itemsObj);
+  const ofType = t => all.filter(([, i]) => i.type === t);
+  const sortRows = rows => rows.sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || ''), undefined, { numeric: true }));
+  if (key === 'station') {
+    return { name: 'SCBA Stations', rows: [
+      ['Barcode', 'Unit', 'Location', 'Cabinet condition', 'Frame barcode', 'Last calibration', 'Frame Serial Number', 'Cylinder barcode',
+       'Last hydro', 'Pressure', 'Cylinder Serial Number', 'Cylinder Manufactured Date', 'L mask', 'M mask', 'S mask', 'Inspection', 'Comments', 'Last inspected'],
+      ...ofType('SCBA Station').map(([id, i]) => [id, i.unit, i.scbaCabinetLocation, i.scbaCabinetCondition, i.scbaFrameId, i.scbaLastCalibration,
+        i.scbaFrameSerialNumber, i.scbaCylinderId, i.scbaLastHydro, i.scbaPressure, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate,
+        i.scbaLMaskId, i.scbaMMaskId, i.scbaSMaskId, i.scbaInspection, i.scbaComments, i.scbaLastInspected])
+    ]};
+  }
+  if (key === 'cylinder') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => { if (i.scbaCylinderId) rows.push([i.scbaCylinderId, 'In Station', id, i.scbaCabinetLocation, i.unit,
+      i.scbaLastHydro, i.scbaPressure, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate, i.scbaComments]); });
+    ofType('SCBA Cylinder').forEach(([id, i]) => rows.push([i.stdCylId || id, 'Standalone', '', '', i.unit,
+      i.stdCylLastHydro, i.stdCylPressure, i.stdCylSerialNumber, i.stdCylManufacturedDate, i.stdCylComments]));
+    return { name: 'SCBA Cylinders', rows: [['Cylinder RFID', 'Status', 'Station barcode', 'Station location', 'Unit', 'Last hydro', 'Pressure', 'Serial Number', 'Manufactured Date', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'frame') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => { if (i.scbaFrameId) rows.push([i.scbaFrameId, 'In Station', id, i.scbaCabinetLocation, i.unit,
+      i.scbaLastCalibration, i.scbaFrameSerialNumber, i.scbaComments]); });
+    ofType('SCBA Frame').forEach(([id, i]) => rows.push([i.stdFrameId || id, 'Standalone', '', '', i.unit,
+      i.stdFrameLastCalibration, i.stdFrameSerialNumber, i.stdFrameComments]));
+    return { name: 'SCBA Frames', rows: [['Frame RFID', 'Status', 'Station barcode', 'Station location', 'Unit', 'Last calibration', 'Serial Number', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'mask') {
+    const rows = [];
+    ofType('SCBA Station').forEach(([id, i]) => {
+      [['Large', i.scbaLMaskId, i.scbaLMaskExpDate], ['Medium', i.scbaMMaskId, i.scbaMMaskExpDate], ['Small', i.scbaSMaskId, i.scbaSMaskExpDate]]
+        .forEach(([size, mid, exp]) => { if (mid) rows.push([mid, size, 'In Station', id, i.scbaCabinetLocation, i.unit, exp, '']); });
+    });
+    ofType('Mask Cabinet').forEach(([id, i]) => {
+      (i.masks || []).filter(m => m.id).forEach(m => rows.push([m.id, m.size || '', 'In Mask Cabinet', id, i.maskCabLocation, i.unit, m.expDate, '']));
+    });
+    ofType('SCBA Mask').forEach(([id, i]) => rows.push([i.stdMaskId || id, i.stdMaskSize || '', 'Standalone', '', '', i.unit, i.stdMaskExpDate, i.stdMaskComments]));
+    return { name: 'SCBA Masks', rows: [['Mask RFID', 'Size', 'Status', 'Parent barcode', 'Parent location', 'Unit', 'Calibration/EXP date', 'Comments'], ...sortRows(rows)] };
+  }
+  if (key === 'maskcab') {
+    return { name: 'Mask Cabinets', rows: [
+      ['Barcode', 'Unit', 'Location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
+      ...ofType('Mask Cabinet').map(([id, i]) => [id, i.unit, i.maskCabLocation, i.maskCabCondition,
+        (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+        i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments])
+    ]};
+  }
+  if (key === 'ext') {
+    return { name: 'Extinguishers', rows: [
+      ['Barcode', 'Unit', 'Location', 'Weight & Agent', 'General inspection', 'Comments', 'Last inspected', 'Serial Number', 'Manufactured Date'],
+      ...ofType('Extinguisher').map(([id, i]) => [id, i.unit, i.extLocation, i.extWeightAgent, i.extInspection, i.extComments, i.extLastInspected, i.extSerialNumber, i.extManufacturedDate])
+    ]};
+  }
+  if (key === 'light') {
+    return { name: 'Emergency Lights', rows: [
+      ['Barcode', 'Unit', 'Location', 'General inspection', 'Comments', 'Last inspected'],
+      ...ofType('Emergency Light').map(([id, i]) => [id, i.unit, i.lightLocation, i.lightInspection, i.lightComments, i.lightLastInspected])
+    ]};
+  }
+  if (key === 'eyewash') {
+    return { name: 'Eyewash Stations', rows: [
+      ['Barcode', 'Unit', 'Location', 'General inspection', 'Last service', 'Last inspected', 'Comments'],
+      ...ofType('Eyewash Station').map(([id, i]) => [id, i.unit, i.eyewashLocation, i.eyewashInspection, i.eyewashLastService, i.eyewashLastInspected, i.eyewashComments])
+    ]};
+  }
+  if (key === 'spill') {
+    return { name: 'Spill Kits', rows: [
+      ['Barcode', 'Unit', 'Location', 'Car seal intact', 'Missing items', 'Box condition', 'Last inspected', 'Comments'],
+      ...ofType('Spill Kit').map(([id, i]) => [id, i.unit, i.spillLocation, i.spillSeal, i.spillMissingItems, i.spillBoxCondition, i.spillLastInspected, i.spillComments])
+    ]};
+  }
+  if (key === 'sar') {
+    return { name: 'SAR', rows: [
+      ['Barcode', 'Unit', 'Location', 'RFID/Barcode', 'General inspection', 'Last inspected', 'Comments'],
+      ...ofType('SAR').map(([id, i]) => [id, i.unit, i.sarLocation, i.sarId, i.sarInspection, i.sarLastInspected, i.sarComments])
+    ]};
+  }
+  return null;
+}
+
+function downloadTypeXlsx(key) {
+  const def = DOWNLOAD_TYPES.find(t => t.key === key);
+  const sheet = def && buildTypeSheet(key, items);
+  if (!sheet) return;
+  if (sheet.rows.length < 2) { showToast('No ' + def.label.replace(/^\S+\s/, '') + ' in the app yet'); return; }
+  const bytes = buildXlsxFile([sheet]);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = def.file + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(def.file.replace(/_/g, ' ') + ': ' + (sheet.rows.length - 1) + ' rows downloaded');
+}
+
+document.getElementById('downloadByTypeLink').addEventListener('click', () => {
+  document.getElementById('downloadByTypeList').innerHTML = DOWNLOAD_TYPES.map(t => {
+    const n = buildTypeSheet(t.key, items).rows.length - 1;
+    return `<button type="button" class="dlTypeBtn" data-key="${t.key}" style="text-align:left;padding:12px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:var(--text);font-size:15px;">${t.label} <span style="color:var(--text-dim);float:right;">${n}</span></button>`;
+  }).join('');
+  document.getElementById('downloadByTypeOverlay').classList.add('show');
+});
+document.getElementById('downloadByTypeList').addEventListener('click', (e) => {
+  const b = e.target.closest('.dlTypeBtn');
+  if (b) downloadTypeXlsx(b.dataset.key);
+});
+document.getElementById('downloadByTypeCloseBtn').addEventListener('click', () => {
+  document.getElementById('downloadByTypeOverlay').classList.remove('show');
+});
+
+// ---------- Cloud sync (optional; Firebase via cloud-sync.js) ----------
+const CLOUD_CFG_KEY = 'safety_tracker_cloud_config_v1';
+let cloud = null;
+let cloudState = 'off';
+let renderTimer = null;
+const cloudBridge = {
+  getItems: () => items,
+  getHistory: () => componentHistory,
+  toast: (m) => showToast(m),
+  confirm: (m) => confirm(m),
+  applyItems(upserts, removals) {
+    let n = 0;
+    Object.entries(upserts || {}).forEach(([id, it]) => { items[id] = it; n++; });
+    (removals || []).forEach((id) => { if (id in items) { delete items[id]; n++; } });
+    if (n) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch (e) { /* quota */ }
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => { populateFilters(); renderList(); }, 150);
+    }
+    return n;
+  },
+  mergeHistory(incoming) {
+    let changed = false;
+    Object.entries(incoming || {}).forEach(([key, entries]) => {
+      const seen = new Map();
+      [...(componentHistory[key] || []), ...entries].forEach((e) => {
+        const k = e.collectionPointId + '|' + e.role + '|' + e.timestamp;
+        if (!seen.has(k)) seen.set(k, e);
+      });
+      const merged = Array.from(seen.values()).sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+      if (merged.length !== (componentHistory[key] || []).length) { componentHistory[key] = merged; changed = true; }
+    });
+    if (changed) { try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); } catch (e) { /* quota */ } }
+  }
+};
+
+function parseFirebaseConfig(text) {
+  const src = String(text || '');
+  // Prefer the block right after "firebaseConfig =" so a full pasted snippet (with import { … } lines) still works.
+  const m = src.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\n?\s*\})\s*;?/) || src.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Could not find the { … } config block');
+  if (m.length > 1 && m[1]) m[0] = m[1];
+  const jsonish = m[0]
+    .replace(/\/\/.*$/gm, '')
+    .replace(/'/g, '"')
+    .replace(/([{,]\s*)([A-Za-z_]\w*)\s*:/g, '$1"$2":')
+    .replace(/,\s*}/g, '}');
+  const cfg = JSON.parse(jsonish);
+  ['apiKey', 'authDomain', 'projectId', 'appId'].forEach((k) => { if (!cfg[k]) throw new Error('Config is missing "' + k + '"'); });
+  return cfg;
+}
+
+function cloudSetState(state, text) {
+  cloudState = state;
+  const link = document.getElementById('cloudLink');
+  const labels = {
+    off: '☁️ Cloud sync: off (set up)', loading: '☁️ Cloud sync: loading…', signedout: '☁️ Cloud sync: sign in needed',
+    connecting: '☁️ Cloud sync: connecting…', synced: '☁️ Cloud sync: on ✓', error: '☁️ Cloud sync: problem (tap for details)'
+  };
+  link.textContent = labels[state] || labels.off;
+  link.style.color = state === 'synced' ? '#4ade80' : (state === 'error' ? '#f87171' : '');
+  document.getElementById('cloudStatusText').textContent = text || '';
+  const configured = state !== 'off';
+  document.getElementById('cloudConfigBlock').style.display = configured && state !== 'error' ? 'none' : '';
+  document.getElementById('cloudSaveBtn').style.display = (!configured || state === 'error') ? '' : 'none';
+  document.getElementById('cloudSignOutBtn').style.display = (state === 'synced' || state === 'connecting') ? '' : 'none';
+  document.getElementById('cloudEmailBlock').style.display = (state === 'signedout' || state === 'error') && configured ? '' : 'none';
+  document.getElementById('cloudRemoveBtn').style.display = configured ? '' : 'none';
+}
+
+async function cloudStart(cfg) {
+  try {
+    const mod = await import(new URL('./cloud-sync.js', location.href).href);
+    cloud = mod.createCloudSync({ bridge: cloudBridge, hooks: window.__scbaCloud, onStatus: cloudSetState });
+    await cloud.start(cfg);
+  } catch (err) {
+    cloudSetState('error', 'Could not load cloud-sync.js — make sure it is uploaded next to index.html in the repo.');
+  }
+}
+
+document.getElementById('cloudLink').addEventListener('click', () => {
+  document.getElementById('cloudOverlay').classList.add('show');
+});
+document.getElementById('cloudCloseBtn').addEventListener('click', () => {
+  document.getElementById('cloudOverlay').classList.remove('show');
+});
+document.getElementById('cloudSaveBtn').addEventListener('click', async () => {
+  let cfg;
+  try { cfg = parseFirebaseConfig(document.getElementById('cloudConfigInput').value); }
+  catch (err) { cloudSetState(cloudState, 'Config problem: ' + err.message); return; }
+  try { localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(cfg)); } catch (e) { /* ignore */ }
+  document.getElementById('cloudConfigInput').value = '';
+  cloudSetState('loading', 'Connecting…');
+  await cloudStart(cfg);
+});
+document.getElementById('cloudEmailSignInBtn').addEventListener('click', async () => {
+  const email = document.getElementById('cloudEmail').value;
+  const pw = document.getElementById('cloudPassword').value;
+  if (!email || !pw) { cloudSetState(cloudState, 'Enter your email and password'); return; }
+  try {
+    if (!cloud) { const cfg = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)); await cloudStart(cfg); }
+    await cloud.signInEmail(email, pw);
+    document.getElementById('cloudPassword').value = '';
+  } catch (err) {
+    const code = (err && err.code) || '';
+    cloudSetState('error', /invalid-credential|wrong-password|user-not-found/.test(code) ? 'Email or password not recognized.' : 'Sign-in failed: ' + (err && err.message || err));
+  }
+});
+document.getElementById('cloudSignOutBtn').addEventListener('click', async () => {
+  try { await cloud.signOut(); } catch (err) { /* ignore */ }
+});
+document.getElementById('cloudRemoveBtn').addEventListener('click', async () => {
+  if (!confirm('Turn off cloud sync on this phone? Your local data stays; nothing is deleted from the cloud.')) return;
+  try { if (cloud) await cloud.signOut(); } catch (err) { /* ignore */ }
+  try { localStorage.removeItem(CLOUD_CFG_KEY); localStorage.removeItem('safety_tracker_cloud_base_v1'); } catch (e) { /* ignore */ }
+  cloud = null;
+  window.__scbaCloud.onItemsSaved = null; window.__scbaCloud.onHistorySaved = null;
+  cloudSetState('off', 'Cloud sync is off.');
+});
+function cloudAutoStart() {
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY) || 'null'); } catch (e) { cfg = null; }
+  cloudSetState('off', 'Cloud sync is off. Paste your Firebase config below to turn it on.');
+  if (cfg) { cloudSetState('loading', 'Connecting…'); cloudStart(cfg); }
+}
+
+// ---------- Custom report: pick areas (units) and equipment ----------
+const CR_TYPE_MAP = { station: 'SCBA Station', cylinder: 'SCBA Cylinder', frame: 'SCBA Frame', mask: 'SCBA Mask', maskcab: 'Mask Cabinet',
+  ext: 'Extinguisher', light: 'Emergency Light', eyewash: 'Eyewash Station', spill: 'Spill Kit', sar: 'SAR' };
+const CR_NO_UNIT = '(No unit)';
+
+function crSelected(group) {
+  return Array.from(document.querySelectorAll('#customReportOverlay input[data-cr="' + group + '"]:checked')).map(el => el.value);
+}
+function crFilteredItems() {
+  const units = new Set(crSelected('unit'));
+  const out = {};
+  Object.entries(items).forEach(([id, i]) => { if (units.has(i.unit || CR_NO_UNIT)) out[id] = i; });
+  return out;
+}
+function crBuildSheets() {
+  const keys = crSelected('type');
+  const byUnit = crFilteredItems();
+  const layout = (document.querySelector('input[name="crLayout"]:checked') || {}).value;
+  if (layout === 'area') {
+    const sheets = [];
+    crSelected('unit').forEach(u => {
+      const unitItems = {};
+      Object.entries(byUnit).forEach(([id, i]) => { if ((i.unit || CR_NO_UNIT) === u) unitItems[id] = i; });
+      const rows = [];
+      keys.forEach(k => {
+        const sh = buildTypeSheet(k, unitItems);
+        if (!sh || sh.rows.length < 2) return;
+        if (rows.length) rows.push([]);
+        rows.push([sh.name + ' (' + (sh.rows.length - 1) + ')']);
+        sh.rows.forEach(r => rows.push(r));
+      });
+      if (rows.length) sheets.push({ name: u, rows });
+    });
+    return sheets;
+  }
+  if (layout === 'unit') {
+    const types = new Set(keys.map(k => CR_TYPE_MAP[k]));
+    const narrowed = {};
+    Object.entries(byUnit).forEach(([id, i]) => { if (types.has(i.type)) narrowed[id] = i; });
+    const sheets = buildXlsxSheetsFromItems(narrowed);
+    return (sheets.length === 1 && sheets[0].name === 'Sheet1') ? [] : sheets;
+  }
+  return keys.map(k => buildTypeSheet(k, byUnit)).filter(sh => sh && sh.rows.length > 1);
+}
+function crUpdateSummary() {
+  const el = document.getElementById('crSummary');
+  if (!el) return;
+  const sheets = crBuildSheets();
+  const rows = sheets.reduce((n, sh) => n + sh.rows.length - 1, 0);
+  el.textContent = sheets.length ? (sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's') + ', ' + rows + ' rows') : 'Nothing selected matches any records';
+  document.getElementById('crDownloadBtn').disabled = !sheets.length;
+}
+document.getElementById('customReportLink').addEventListener('click', () => {
+  const unitCounts = {};
+  Object.values(items).forEach(i => { const u = i.unit || CR_NO_UNIT; unitCounts[u] = (unitCounts[u] || 0) + 1; });
+  document.getElementById('crUnits').innerHTML = Object.keys(unitCounts).sort().map(u =>
+    `<label><input type="checkbox" data-cr="unit" value="${escapeHtml(u)}" checked> ${escapeHtml(u)} <span style="color:var(--text-dim);">(${unitCounts[u]})</span></label>`).join('');
+  document.getElementById('crTypes').innerHTML = DOWNLOAD_TYPES.map(t =>
+    `<label><input type="checkbox" data-cr="type" value="${t.key}" checked> ${t.label}</label>`).join('');
+  document.getElementById('customReportOverlay').classList.add('show');
+  crUpdateSummary();
+});
+document.getElementById('customReportOverlay').addEventListener('change', crUpdateSummary);
+document.getElementById('customReportOverlay').addEventListener('click', (e) => {
+  const b = e.target.closest('.crAll');
+  if (!b) return;
+  document.querySelectorAll('#customReportOverlay input[data-cr="' + b.dataset.group + '"]').forEach(c => { c.checked = b.dataset.on === '1'; });
+  crUpdateSummary();
+});
+document.getElementById('crCloseBtn').addEventListener('click', () => {
+  document.getElementById('customReportOverlay').classList.remove('show');
+});
+document.getElementById('crDownloadBtn').addEventListener('click', () => {
+  const sheets = crBuildSheets();
+  if (!sheets.length) return;
+  const bytes = buildXlsxFile(sheets);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'safety_report_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Report downloaded — ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's'));
+  document.getElementById('customReportOverlay').classList.remove('show');
+});
+
+// ---------- Export (flat CSV, no external dependencies) ----------
+function csvEscape(v) {
+  if (v === null || v === undefined) v = '';
+  v = String(v);
+  return '"' + v.replace(/"/g, '""') + '"';
+}
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const header = [
+    'Collection Point Barcode', 'Type', 'Unit',
+    'Ext Location', 'Ext Weight & Agent', 'Ext Serial Number', 'Ext Manufactured Date', 'Ext Inspection', 'Ext Last Inspected', 'Ext Comments',
+    'Light Location', 'Light Inspection', 'Light Last Inspected', 'Light Comments',
+    'Eyewash Location', 'Eyewash Inspection', 'Eyewash Last Service', 'Eyewash Last Inspected', 'Eyewash Comments',
+    'Spill Kit Location', 'Spill Kit Seal', 'Spill Kit Missing Items', 'Spill Kit Box Condition', 'Spill Kit Last Inspected', 'Spill Kit Comments',
+    'Mask Cab Location', 'Mask Cab Condition', 'Mask Cab Masks', 'Mask Cab SAR Number', 'Mask Cab Box', 'Mask Cab Inspection', 'Mask Cab Last Inspected', 'Mask Cab Comments',
+    'SAR Location', 'SAR RFID/Barcode', 'SAR Inspection', 'SAR Last Inspected', 'SAR Comments',
+    'SCBA Cabinet Location', 'SCBA Cabinet Condition',
+    'SCBA Frame RFID', 'SCBA Last Calibration', 'SCBA Frame Serial Number',
+    'SCBA Cylinder RFID', 'SCBA Last Hydro', 'SCBA Pressure', 'SCBA Cylinder Serial Number', 'SCBA Cylinder Manufactured Date',
+    'SCBA L Mask RFID', 'SCBA L Mask Date', 'SCBA M Mask RFID', 'SCBA M Mask Date', 'SCBA S Mask RFID', 'SCBA S Mask Date',
+    'SCBA Inspection', 'SCBA Last Inspected', 'SCBA Comments',
+    'Standalone Cyl RFID', 'Standalone Cyl Last Hydro', 'Standalone Cyl Pressure', 'Standalone Cyl Serial Number', 'Standalone Cyl Manufactured Date', 'Standalone Cyl Comments',
+    'Standalone Frame RFID', 'Standalone Frame Last Calibration', 'Standalone Frame Serial Number', 'Standalone Frame Comments',
+    'Standalone Mask Size', 'Standalone Mask RFID', 'Standalone Mask EXP Date', 'Standalone Mask Comments',
+    'Scan Count', 'Created', 'Last Scanned'
+  ];
+  const rows = [header];
+  Object.entries(items).forEach(([id, i]) => {
+    rows.push([
+      id, i.type || '', i.unit || '',
+      i.extLocation || '', i.extWeightAgent || '', i.extSerialNumber || '', i.extManufacturedDate || '', i.extInspection || '', i.extLastInspected || '', i.extComments || '',
+      i.lightLocation || '', i.lightInspection || '', i.lightLastInspected || '', i.lightComments || '',
+      i.eyewashLocation || '', i.eyewashInspection || '', i.eyewashLastService || '', i.eyewashLastInspected || '', i.eyewashComments || '',
+      i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
+      i.maskCabLocation || '', i.maskCabCondition || '',
+      (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
+      i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
+      i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
+      i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
+      i.scbaFrameId || '', i.scbaLastCalibration || '', i.scbaFrameSerialNumber || '',
+      i.scbaCylinderId || '', i.scbaLastHydro || '', i.scbaPressure || '', i.scbaCylinderSerialNumber || '', i.scbaCylinderManufacturedDate || '',
+      i.scbaLMaskId || '', i.scbaLMaskExpDate || '', i.scbaMMaskId || '', i.scbaMMaskExpDate || '', i.scbaSMaskId || '', i.scbaSMaskExpDate || '',
+      i.scbaInspection || '', i.scbaLastInspected || '', i.scbaComments || '',
+      i.stdCylId || '', i.stdCylLastHydro || '', i.stdCylPressure || '', i.stdCylSerialNumber || '', i.stdCylManufacturedDate || '', i.stdCylComments || '',
+      i.stdFrameId || '', i.stdFrameLastCalibration || '', i.stdFrameSerialNumber || '', i.stdFrameComments || '',
+      i.stdMaskSize || '', i.stdMaskId || '', i.stdMaskExpDate || '', i.stdMaskComments || '',
+      (i.history || []).length,
+      i.createdAt ? new Date(i.createdAt).toISOString() : '',
+      i.updatedAt ? new Date(i.updatedAt).toISOString() : ''
+    ]);
+  });
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'safety_equipment_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV downloaded');
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (confirm('Delete ALL tracked equipment? This cannot be undone.')) {
+    items = {};
+    saveItems();
+    renderList();
+    showToast('Cleared');
+  }
+});
+
+// ---------- Camera barcode scanner (native BarcodeDetector, no external libs) ----------
+let scannerStream = null;
+let scannerRAF = null;
+let scannerMode = 'entry';
+let scannerTargetId = null;
+let scannerSizeTargetId = null;
+let scannerDateTargetId = null;
+let barcodeDetector = null;
+if ('BarcodeDetector' in window) {
+  try {
+    barcodeDetector = new BarcodeDetector({
+      formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code', 'data_matrix', 'itf']
+    });
+  } catch (e) { barcodeDetector = null; }
+}
+
+function getKnownSizeForComponent(componentId) {
+  const key = String(componentId).trim();
+  const entries = componentHistory[key];
+  if (entries && entries.length) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const role = entries[i].role || '';
+      if (role.endsWith(' Mask')) {
+        const size = role.slice(0, -5).trim();
+        if (['Large', 'Medium', 'Small', 'Other'].includes(size)) return size;
+      }
+    }
+  }
+  // Fall back to the master equipment registry (e.g. an uploaded calibration sheet)
+  const reg = equipmentRegistry[key];
+  if (reg && ['Large', 'Medium', 'Small'].includes(reg.type)) return reg.type;
+  return null;
+}
+// ---------- XLSX reading (for uploading a calibration list) ----------
+// A real .xlsx file is a ZIP archive whose parts are usually DEFLATE-compressed (unlike our
+// own export writer, which uses uncompressed STORE for simplicity). No external library —
+// decompression uses the browser's built-in DecompressionStream, and XML parsing uses the
+// browser's built-in DOMParser, so this stays dependency-free and keeps the strict CSP intact.
+function xlsxReadU16(buf, pos) { return buf[pos] | (buf[pos + 1] << 8); }
+function xlsxReadU32(buf, pos) { return (buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24)) >>> 0; }
+
+async function xlsxInflateRaw(bytes) {
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function xlsxReadZipEntries(arrayBuffer, wantedNames) {
+  const buf = new Uint8Array(arrayBuffer);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 65536; i--) {
+    if (xlsxReadU32(buf, i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('Not a valid .xlsx file (no ZIP directory found)');
+  const totalEntries = xlsxReadU16(buf, eocd + 10);
+  const centralDirOffset = xlsxReadU32(buf, eocd + 16);
+
+  const results = {};
+  let pos = centralDirOffset;
+  for (let i = 0; i < totalEntries; i++) {
+    if (xlsxReadU32(buf, pos) !== 0x02014b50) throw new Error('This .xlsx file looks corrupted');
+    const compressionMethod = xlsxReadU16(buf, pos + 10);
+    const compressedSize = xlsxReadU32(buf, pos + 20);
+    const nameLen = xlsxReadU16(buf, pos + 28);
+    const extraLen = xlsxReadU16(buf, pos + 30);
+    const commentLen = xlsxReadU16(buf, pos + 32);
+    const localHeaderOffset = xlsxReadU32(buf, pos + 42);
+    const name = new TextDecoder().decode(buf.subarray(pos + 46, pos + 46 + nameLen));
+
+    if (!wantedNames || wantedNames.includes(name)) {
+      const lNameLen = xlsxReadU16(buf, localHeaderOffset + 26);
+      const lExtraLen = xlsxReadU16(buf, localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + lNameLen + lExtraLen;
+      const compressedData = buf.subarray(dataStart, dataStart + compressedSize);
+      if (compressionMethod === 0) results[name] = compressedData;
+      else if (compressionMethod === 8) results[name] = await xlsxInflateRaw(compressedData);
+      else throw new Error('This .xlsx uses an unsupported compression method');
+    }
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return results;
+}
+
+function xlsxExcelSerialToIsoDate(serial) {
+  const n = Number(serial);
+  if (!isFinite(n)) return null;
+  const ms = Date.UTC(1899, 11, 30) + Math.round(n) * 86400000;
+  const d = new Date(ms);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+function xlsxParseDateLoosely(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return xlsxExcelSerialToIsoDate(value);
+  const s = String(value).trim();
+  if (/^\d+(\.\d+)?$/.test(s)) return xlsxExcelSerialToIsoDate(parseFloat(s));
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const month = parseInt(m[1], 10), day = parseInt(m[2], 10), year = parseInt(m[3], 10);
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m2 ? m2[0] : null;
+}
+function xlsxColLetterToIndex(ref) {
+  const m = ref.match(/^([A-Z]+)/);
+  if (!m) return 0;
+  let n = 0;
+  for (const ch of m[1]) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+function xlsxParseSharedStrings(xmlText) {
+  if (!xmlText) return [];
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  return [...doc.getElementsByTagName('si')].map(si =>
+    [...si.getElementsByTagName('t')].map(t => t.textContent).join('')
+  );
+}
+function xlsxParseWorksheetRows(xmlText, sharedStrings) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const rows = [];
+  [...doc.getElementsByTagName('row')].forEach(rowEl => {
+    // Excel omits <row> elements for entirely blank rows, so the row's own "r" attribute
+    // (its real 1-based row number) must be used as the array index — otherwise every row
+    // after a gap silently shifts out of alignment with its true row number.
+    const rAttr = rowEl.getAttribute('r');
+    const rowIndex = rAttr ? parseInt(rAttr, 10) - 1 : rows.length;
+    const row = [];
+    [...rowEl.children].filter(c => c.tagName === 'c').forEach(c => {
+      const idx = xlsxColLetterToIndex(c.getAttribute('r') || '');
+      const type = c.getAttribute('t');
+      let value = null;
+      if (type === 'inlineStr') {
+        const isEl = c.getElementsByTagName('is')[0];
+        value = isEl ? [...isEl.getElementsByTagName('t')].map(t => t.textContent).join('') : '';
+      } else if (type === 's') {
+        const vEl = c.getElementsByTagName('v')[0];
+        const sIdx = vEl ? parseInt(vEl.textContent, 10) : -1;
+        value = sharedStrings[sIdx] !== undefined ? sharedStrings[sIdx] : '';
+      } else if (type === 'str' || type === 'b') {
+        const vEl = c.getElementsByTagName('v')[0];
+        value = vEl ? vEl.textContent : '';
+      } else {
+        const vEl = c.getElementsByTagName('v')[0];
+        value = vEl ? parseFloat(vEl.textContent) : null;
+      }
+      row[idx] = value;
+    });
+    rows[rowIndex] = row;
+  });
+  return rows;
+}
+
+// ---------- Multi-sheet workbook support (for importing the Monthly inspection workbook) ----------
+function xlsxListWorksheets(workbookXml, relsXml) {
+  const wbDoc = new DOMParser().parseFromString(workbookXml, 'application/xml');
+  const sheets = [...wbDoc.getElementsByTagName('sheet')].map(s => ({
+    name: s.getAttribute('name'),
+    rId: s.getAttribute('r:id') || (s.getAttributeNS ? s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') : null)
+  }));
+  const relsDoc = new DOMParser().parseFromString(relsXml, 'application/xml');
+  const relMap = {};
+  [...relsDoc.getElementsByTagName('Relationship')].forEach(r => { relMap[r.getAttribute('Id')] = r.getAttribute('Target'); });
+  return sheets.map(s => ({ name: s.name, path: 'xl/' + relMap[s.rId] }));
+}
+function xlsxFindHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i] || [];
+    if (row.some(c => c && String(c).trim().toLowerCase().startsWith('barcode'))) return i;
+  }
+  return -1;
+}
+function xlsxFindCol(headerRow, matchFn) {
+  for (let c = 0; c < headerRow.length; c++) {
+    if (headerRow[c] && matchFn(String(headerRow[c]).trim().toLowerCase())) return c;
+  }
+  return -1;
+}
+function xlsxCleanBarcode(raw) {
+  if (!raw) return '';
+  return String(raw).trim().replace(/\*+$/, '').trim();
+}
+function xlsxSplitCombined(raw) {
+  // Real-world sheets mix delimiters inconsistently — some rows use "*" between ID and
+  // location, others use a plain space. Whichever appears first in the string wins.
+  if (!raw) return { id: '', rest: '' };
+  const s = String(raw).trim();
+  const starIdx = s.indexOf('*');
+  const spaceMatch = s.match(/\s/);
+  const spaceIdx = spaceMatch ? spaceMatch.index : -1;
+  let splitAt = -1;
+  if (starIdx !== -1 && (spaceIdx === -1 || starIdx < spaceIdx)) splitAt = starIdx;
+  else if (spaceIdx !== -1) splitAt = spaceIdx;
+  if (splitAt === -1) return { id: xlsxCleanBarcode(s), rest: '' };
+  return { id: xlsxCleanBarcode(s.slice(0, splitAt)), rest: s.slice(splitAt + 1).trim() };
+}
+const MONTHLY_SKIP_SHEETS = ['portables & weeklies', 'spill kits', 'incident response equipment'];
+const MONTHLY_VALID_RESULTS = new Set(['pass', 'fail', 'n/a', 'na']);
+
+async function parseMonthlyWorkbook(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const rootEntries = await xlsxReadZipEntries(arrayBuffer, ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/sharedStrings.xml']);
+  if (!rootEntries['xl/workbook.xml'] || !rootEntries['xl/_rels/workbook.xml.rels']) throw new Error('Could not find workbook structure in this file');
+  const workbookXml = new TextDecoder().decode(rootEntries['xl/workbook.xml']);
+  const relsXml = new TextDecoder().decode(rootEntries['xl/_rels/workbook.xml.rels']);
+  const sharedXml = rootEntries['xl/sharedStrings.xml'] ? new TextDecoder().decode(rootEntries['xl/sharedStrings.xml']) : null;
+  const sharedStrings = xlsxParseSharedStrings(sharedXml);
+  const worksheets = xlsxListWorksheets(workbookXml, relsXml);
+
+  const sheetPaths = worksheets.filter(w => !MONTHLY_SKIP_SHEETS.includes(w.name.trim().toLowerCase())).map(w => w.path);
+  const sheetEntries = await xlsxReadZipEntries(arrayBuffer, sheetPaths);
+
+  const updates = { ext: [], light: [], scba: [] };
+  for (const ws of worksheets) {
+    const cleanName = ws.name.trim().toLowerCase();
+    if (MONTHLY_SKIP_SHEETS.includes(cleanName)) continue;
+    const xml = sheetEntries[ws.path];
+    if (!xml) continue;
+    const rows = xlsxParseWorksheetRows(new TextDecoder().decode(xml), sharedStrings);
+    const headerIdx = xlsxFindHeaderRow(rows);
+    if (headerIdx === -1) continue;
+    const header = rows[headerIdx];
+
+    const extBarcodeCol = xlsxFindCol(header, h => h === 'barcode:' || h === 'barcode');
+    const lightCol = xlsxFindCol(header, h => h.startsWith('light barcode'));
+    const scbaCol = xlsxFindCol(header, h => h.startsWith('cabinet barcode'));
+    const scbaInspCol = xlsxFindCol(header, h => h.startsWith('scba general inspection'));
+
+    for (let r = headerIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      if (extBarcodeCol !== -1 && row[extBarcodeCol]) {
+        const id = xlsxCleanBarcode(row[extBarcodeCol]);
+        if (id) updates.ext.push({ id, inspection: row[extBarcodeCol + 1], comments: row[extBarcodeCol + 2] });
+      }
+      if (lightCol !== -1 && row[lightCol]) {
+        const { id } = xlsxSplitCombined(row[lightCol]);
+        if (id) updates.light.push({ id, inspection: row[lightCol + 1], comments: row[lightCol + 2] });
+      }
+      if (scbaCol !== -1 && row[scbaCol] && scbaInspCol !== -1) {
+        const { id } = xlsxSplitCombined(row[scbaCol]);
+        if (id) updates.scba.push({ id, condition: row[scbaCol + 1], inspection: row[scbaInspCol], comments: row[scbaInspCol + 4] });
+      }
+    }
+  }
+  return updates;
+}
+
+async function parseCalibrationXlsx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const entries = await xlsxReadZipEntries(arrayBuffer, ['xl/worksheets/sheet1.xml', 'xl/sharedStrings.xml']);
+  if (!entries['xl/worksheets/sheet1.xml']) throw new Error('Could not find a worksheet in this file');
+  const sheetXml = new TextDecoder().decode(entries['xl/worksheets/sheet1.xml']);
+  const sharedXml = entries['xl/sharedStrings.xml'] ? new TextDecoder().decode(entries['xl/sharedStrings.xml']) : null;
+  const sharedStrings = xlsxParseSharedStrings(sharedXml);
+  return xlsxParseWorksheetRows(sheetXml, sharedStrings);
+}
+
+function getKnownDateForComponent(componentId) {
+  const reg = equipmentRegistry[String(componentId).trim()];
+  return reg && reg.calibrationDate ? reg.calibrationDate : null;
+}
+function applyKnownInfoIfAny(value, sizeTargetId, dateTargetId) {
+  if (sizeTargetId) {
+    const size = getKnownSizeForComponent(value);
+    if (size) {
+      const sizeInput = document.getElementById(sizeTargetId);
+      if (sizeInput && [...sizeInput.options].some(o => o.value === size)) {
+        sizeInput.value = size;
+        sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        sizeInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+  }
+  if (dateTargetId) {
+    const date = getKnownDateForComponent(value);
+    if (date) {
+      const dateInput = document.getElementById(dateTargetId);
+      if (dateInput) { dateInput.value = date; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+  }
+}
+function applyKnownSizeIfAny(value, sizeTargetId) {
+  // kept as a thin wrapper for any remaining call sites; prefer applyKnownInfoIfAny going forward
+  applyKnownInfoIfAny(value, sizeTargetId, null);
+}
+
+async function openScanner(opts) {
+  opts = opts || {};
+  scannerMode = opts.targetId ? 'field' : 'entry';
+  scannerTargetId = opts.targetId || null;
+  scannerSizeTargetId = opts.sizeTargetId || null;
+  scannerDateTargetId = opts.dateTargetId || null;
+
+  if (!barcodeDetector) {
+    showToast('Camera barcode scanning isn\'t supported in this browser');
+    if (scannerMode === 'entry') {
+      const val = prompt('Enter the collection point barcode manually:');
+      const trimmed = (val || '').trim();
+      if (trimmed) openModal(trimmed);
+    } else {
+      const val = prompt('Enter the barcode manually:');
+      const trimmed = (val || '').trim();
+      if (trimmed) {
+        const input = document.getElementById(scannerTargetId);
+        if (input) { input.value = trimmed; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        applyKnownInfoIfAny(trimmed, scannerSizeTargetId, scannerDateTargetId);
+        if (scannerTargetId === 'historyLookupInput') renderComponentHistory(trimmed);
+      }
+    }
+    return;
+  }
+  const overlay = document.getElementById('scannerOverlay');
+  const video = document.getElementById('scannerVideo');
+  const hint = document.getElementById('scannerHint');
+  hint.textContent = 'Point camera at the barcode';
+  overlay.classList.add('show');
+
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = scannerStream;
+    await video.play();
+    scanLoop();
+  } catch (err) {
+    hint.textContent = 'Camera access failed: ' + (err && err.message ? err.message : 'unknown error');
+  }
+}
+
+function scanLoop() {
+  const video = document.getElementById('scannerVideo');
+  if (!scannerStream) return;
+  barcodeDetector.detect(video).then((codes) => {
+    if (codes && codes.length > 0 && codes[0].rawValue) {
+      const value = codes[0].rawValue;
+      if (navigator.vibrate) navigator.vibrate(60);
+      const wasFieldMode = scannerMode === 'field';
+      const targetId = scannerTargetId;
+      const sizeTargetId = scannerSizeTargetId;
+      const dateTargetId = scannerDateTargetId;
+      closeScanner();
+      if (wasFieldMode && targetId) {
+        const input = document.getElementById(targetId);
+        if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        applyKnownInfoIfAny(value, sizeTargetId, dateTargetId);
+        const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
+        const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
+        showToast('Scanned: ' + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : ''));
+        if (targetId === 'historyLookupInput') renderComponentHistory(value);
+        return;
+      }
+      const matchId = findMatchingId(value);
+      if (matchId && matchId !== value) {
+        showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
+        openComponentHistoryFor(value);
+        return;
+      }
+      showToast('Barcode: ' + value);
+      openModal(matchId || value);
+      return;
+    }
+    scannerRAF = requestAnimationFrame(scanLoop);
+  }).catch(() => {
+    scannerRAF = requestAnimationFrame(scanLoop);
+  });
+}
+
+function closeScanner() {
+  if (scannerRAF) { cancelAnimationFrame(scannerRAF); scannerRAF = null; }
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  document.getElementById('scannerOverlay').classList.remove('show');
+  scannerMode = 'entry';
+  scannerTargetId = null;
+  scannerSizeTargetId = null;
+  scannerDateTargetId = null;
+}
+
+document.getElementById('scannerCancelBtn').addEventListener('click', closeScanner);
+document.getElementById('scanBarcodeEntryBtn').addEventListener('click', () => openScanner());
+document.addEventListener('click', (e) => {
+  const camBtn = e.target.closest('.scan-cam-btn');
+  if (camBtn) openScanner({ targetId: camBtn.dataset.target, sizeTargetId: camBtn.dataset.sizeTarget || null, dateTargetId: camBtn.dataset.dateTarget || null });
+});
+document.getElementById('manualEntryLink').addEventListener('click', () => {
+  const val = prompt('Enter the collection point barcode or NFC ID manually:');
+  const trimmed = (val || '').trim();
+  if (trimmed) openModal(trimmed);
+});
+
+document.getElementById('addUnassignedLink').addEventListener('click', () => {
+  const id = 'UNASSIGNED-' + Date.now().toString(36).toUpperCase();
+  openModal(id);
+});
+
+// ---------- Start a new inspection month ----------
+// Fields that represent "this month's" inspection status/comments, cleared for a fresh cycle.
+// Equipment links (RFID), calibration/hydro dates, and locations are deliberately NOT included —
+// those describe the equipment itself, not the monthly inspection cycle.
+const MONTHLY_RESET_FIELDS = {
+  'Extinguisher': ['extInspection', 'extLastInspected', 'extComments'],
+  'Emergency Light': ['lightInspection', 'lightLastInspected', 'lightComments'],
+  'Eyewash Station': ['eyewashInspection', 'eyewashLastInspected', 'eyewashComments'],
+  'Spill Kit': ['spillSeal', 'spillMissingItems', 'spillBoxCondition', 'spillLastInspected', 'spillComments'],
+  'Mask Cabinet': ['maskCabCondition', 'maskCabBox', 'maskCabInspection', 'maskCabLastInspected', 'maskCabComments'],
+  'SAR': ['sarInspection', 'sarLastInspected', 'sarComments'],
+  'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments']
+};
+
+document.getElementById('startNewMonthLink').addEventListener('click', async () => {
+  const count = Object.values(items).filter(i => MONTHLY_RESET_FIELDS[i.type]).length;
+  if (!count) { showToast('No inspectable equipment to reset yet'); return; }
+
+  const proceed = confirm(
+    'Start a new inspection month for ' + count + ' item(s)?\n\n' +
+    'This will:\n' +
+    '1) Download an XLSX backup of this month\'s results\n' +
+    '2) Save a snapshot of this month in the app itself, under "Previous Months" — ' +
+    'you can come back and re-download its XLSX anytime, even later\n' +
+    '3) Save each item\'s current Pass/Fail status into its own history\n' +
+    '4) Clear Inspection / Last Inspected / Comments so you can re-inspect fresh\n\n' +
+    'Equipment links (Frame/Cylinder/Mask RFID), calibration/hydro dates, and locations ' +
+    'are NOT touched. This cannot be undone. Continue?'
+  );
+  if (!proceed) return;
+
+  document.getElementById('exportXlsxBtn').click();
+  await new Promise(r => setTimeout(r, 400));
+
+  const archiveLabel = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  try {
+    await saveMonthlyArchive(archiveLabel, JSON.parse(JSON.stringify(items)));
+  } catch (e) {
+    showToast('Note: could not save an in-app archive of this month (XLSX download still happened)');
+  }
+
+  const now = Date.now();
+  let resetCount = 0;
+  Object.entries(items).forEach(([id, item]) => {
+    const fields = MONTHLY_RESET_FIELDS[item.type];
+    if (!fields) return;
+    const history = item.history ? item.history.slice() : [];
+    history.push({
+      location: itemDisplayName(item, id),
+      result: itemInspectionResult(item),
+      timestamp: now,
+      equipment: equipmentSnapshot(item),
+      note: 'End-of-month snapshot'
+    });
+    const updated = { ...item, history, updatedAt: now };
+    fields.forEach(f => { updated[f] = ''; });
+    items[id] = updated;
+    resetCount++;
+  });
+  saveItems();
+  renderList();
+  showToast('New month started — ' + resetCount + ' item(s) reset, full history preserved');
+});
+
+// ---------- Previous Months overlay ----------
+async function renderPreviousMonthsList() {
+  const listEl = document.getElementById('previousMonthsList');
+  listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">Loading…</div>';
+  let archives;
+  try {
+    archives = await listMonthlyArchives();
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">Couldn\'t load archives on this device/browser.</div>';
+    return;
+  }
+  if (!archives.length) {
+    listEl.innerHTML = '<div class="empty-state" style="padding:12px 0;">No previous months archived yet — they\'ll appear here after you Start a New Month.</div>';
+    return;
+  }
+  listEl.innerHTML = archives.map(a => `
+    <div class="history-row" data-archive-id="${a.id}" style="align-items:center;">
+      <span class="hist-loc">${escapeHtml(a.label)} <span style="color:var(--text-dim);font-weight:400;">(${Object.keys(a.items).length} items)</span></span>
+      <div style="display:flex;gap:8px;">
+        <button class="archiveDownloadBtn" data-archive-id="${a.id}" style="padding:6px 12px;font-size:13px;">Download XLSX</button>
+        <button class="archiveDeleteBtn" data-archive-id="${a.id}" style="padding:6px 10px;font-size:13px;background:#7f1d1d;color:#fecaca;">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('previousMonthsLink').addEventListener('click', () => {
+  document.getElementById('previousMonthsOverlay').classList.add('show');
+  renderPreviousMonthsList();
+});
+document.getElementById('previousMonthsCloseBtn').addEventListener('click', () => {
+  document.getElementById('previousMonthsOverlay').classList.remove('show');
+});
+document.getElementById('previousMonthsList').addEventListener('click', async (e) => {
+  const dlBtn = e.target.closest('.archiveDownloadBtn');
+  if (dlBtn) {
+    const id = Number(dlBtn.dataset.archiveId);
+    dlBtn.textContent = 'Preparing…';
+    dlBtn.disabled = true;
+    try {
+      const archive = await getMonthlyArchive(id);
+      if (archive) downloadXlsxFromItems(archive.items, 'safety_equipment_' + archive.label.replace(/[^a-z0-9]+/gi, '_'));
+    } catch (err) {
+      showToast('Could not regenerate that month\'s XLSX');
+    }
+    dlBtn.textContent = 'Download XLSX';
+    dlBtn.disabled = false;
+    return;
+  }
+  const delBtn = e.target.closest('.archiveDeleteBtn');
+  if (delBtn) {
+    const id = Number(delBtn.dataset.archiveId);
+    if (!confirm('Delete this archived month? This cannot be undone.')) return;
+    try { await deleteMonthlyArchive(id); renderPreviousMonthsList(); }
+    catch (err) { showToast('Could not delete that archive'); }
+  }
+});
+
+// ---------- Upload a calibration list (Equipment Type / ID Number / Calibration Date) ----------
+const CALIBRATION_TYPE_MAP = { 'large': 'Large', 'medium': 'Medium', 'small': 'Small', 'scba frame': 'Frame', 'frame': 'Frame', 'cylinder': 'Cylinder' };
+
+document.getElementById('uploadCalibrationLink').addEventListener('click', () => {
+  if (typeof DecompressionStream === 'undefined') {
+    showToast('Your browser doesn\'t support reading Excel files directly — try a recent Chrome');
+    return;
+  }
+  document.getElementById('calibrationFileInput').click();
+});
+
+document.getElementById('calibrationFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  showToast('Reading ' + file.name + '…');
+  let rows;
+  try {
+    rows = await parseCalibrationXlsx(file);
+  } catch (err) {
+    alert('Could not read that file: ' + (err && err.message ? err.message : 'unknown error') +
+      '\n\nMake sure it\'s a real .xlsx file with columns: Equipment Type, ID Number, Calibration Date.');
+    return;
+  }
+
+  let updated = 0, added = 0, skipped = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const rawType = row[0];
+    const idNum = row[1];
+    const calDate = row[2];
+    if (!rawType || !idNum) { skipped++; continue; }
+    const mappedType = CALIBRATION_TYPE_MAP[String(rawType).trim().toLowerCase()];
+    if (!mappedType) { skipped++; continue; }
+    const id = String(idNum).trim();
+    if (!id) { skipped++; continue; }
+    const isoDate = xlsxParseDateLoosely(calDate) || '';
+    if (equipmentRegistry[id]) updated++; else added++;
+    equipmentRegistry[id] = { type: mappedType, calibrationDate: isoDate };
+  }
+
+  if (added === 0 && updated === 0) {
+    alert('No recognizable rows found in that file.\n\n' +
+      'Expected columns (in order): Equipment Type (Large/Medium/Small/SCBA Frame/Cylinder), ' +
+      'ID Number, Calibration Date — with the first row as a header.');
+    return;
+  }
+
+  saveEquipmentRegistry();
+  showToast('Calibration list updated — ' + added + ' added, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : ''));
+});
+
+// ---------- Import the Monthly inspection workbook (Extinguisher/Light/SCBA Pass-Fail results) ----------
+function findItemIdWithDupFallback(id, type) {
+  if (items[id] && items[id].type === type) return id;
+  const dupId = id + '-DUP-EXT';
+  if (items[dupId] && items[dupId].type === type) return dupId;
+  return null;
+}
+function resultIsValid(v) {
+  return v !== null && v !== undefined && MONTHLY_VALID_RESULTS.has(String(v).trim().toLowerCase());
+}
+
+document.getElementById('uploadMonthlyLink').addEventListener('click', () => {
+  if (typeof DecompressionStream === 'undefined') {
+    showToast('Your browser doesn\'t support reading Excel files directly — try a recent Chrome');
+    return;
+  }
+  document.getElementById('monthlyFileInput').click();
+});
+
+document.getElementById('monthlyFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  if (!confirm(
+    'Import ' + file.name + '?\n\n' +
+    'For every Extinguisher, Light, and SCBA Station barcode this file matches, this will:\n' +
+    '• Set Inspection to Pass/Fail where the file has a real result\n' +
+    '• Leave Inspection untouched where the cell doesn\'t have a valid Pass/Fail (e.g. a barcode was scanned into the wrong cell)\n' +
+    '• Update Comments wherever the file has any, independent of the above\n' +
+    '• Last Inspected is NOT touched\n\n' +
+    'This reads data already recorded in the file — it does not scan anything. Continue?'
+  )) return;
+
+  showToast('Reading ' + file.name + '…');
+  let updates;
+  try {
+    updates = await parseMonthlyWorkbook(file);
+  } catch (err) {
+    alert('Could not read that file: ' + (err && err.message ? err.message : 'unknown error'));
+    return;
+  }
+
+  const now = Date.now();
+  const stats = { ext: { result: 0, commentsOnly: 0, notFound: 0 }, light: { result: 0, commentsOnly: 0, notFound: 0 }, scba: { result: 0, commentsOnly: 0, notFound: 0 } };
+
+  function applyUpdate(group, matchId, fields) {
+    const item = items[matchId];
+    const history = item.history ? item.history.slice() : [];
+    let changed = false;
+    let gotResult = false;
+    Object.entries(fields).forEach(([field, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      item[field] = value;
+      changed = true;
+      if (field.toLowerCase().includes('inspection') || field.toLowerCase().includes('condition')) gotResult = true;
+    });
+    if (changed) {
+      history.push({
+        location: itemDisplayName(item, matchId), result: itemInspectionResult(item), timestamp: now,
+        equipment: equipmentSnapshot(item), note: 'Imported from ' + file.name
+      });
+      item.history = history;
+      item.updatedAt = now;
+      if (gotResult) stats[group].result++; else stats[group].commentsOnly++;
+    }
+  }
+
+  updates.ext.forEach(u => {
+    const matchId = findItemIdWithDupFallback(u.id, 'Extinguisher');
+    if (!matchId) { stats.ext.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.inspection)) fields.extInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.extComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('ext', matchId, fields); else stats.ext.notFound += 0;
+  });
+  updates.light.forEach(u => {
+    const matchId = items[u.id] && items[u.id].type === 'Emergency Light' ? u.id : null;
+    if (!matchId) { stats.light.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.inspection)) fields.lightInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.lightComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('light', matchId, fields);
+  });
+  updates.scba.forEach(u => {
+    const matchId = items[u.id] && items[u.id].type === 'SCBA Station' ? u.id : null;
+    if (!matchId) { stats.scba.notFound++; return; }
+    const fields = {};
+    if (resultIsValid(u.condition)) fields.scbaCabinetCondition = String(u.condition).trim();
+    if (resultIsValid(u.inspection)) fields.scbaInspection = String(u.inspection).trim();
+    if (u.comments && String(u.comments).trim()) fields.scbaComments = String(u.comments).trim();
+    if (Object.keys(fields).length) applyUpdate('scba', matchId, fields);
+  });
+
+  saveItems();
+  renderList();
+
+  alert(
+    'Import complete.\n\n' +
+    'Extinguishers: ' + stats.ext.result + ' updated with a result, ' + stats.ext.commentsOnly + ' comments-only, ' + stats.ext.notFound + ' not found in the app\n' +
+    'Lights: ' + stats.light.result + ' updated with a result, ' + stats.light.commentsOnly + ' comments-only, ' + stats.light.notFound + ' not found in the app\n' +
+    'SCBA Stations: ' + stats.scba.result + ' updated with a result, ' + stats.scba.commentsOnly + ' comments-only, ' + stats.scba.notFound + ' not found in the app'
+  );
+});
+
+document.getElementById('hardResetLink').addEventListener('click', async () => {
+  const confirmed = confirm(
+    'This deletes ALL data stored in this app on THIS device (including anything you\'ve scanned/entered), ' +
+    'unregisters the offline cache, and reloads fresh from GitHub. This cannot be undone. Continue?'
+  );
+  if (!confirmed) return;
+  try {
+    const keepCfg = localStorage.getItem('safety_tracker_cloud_config_v1');
+    localStorage.clear();
+    if (keepCfg) localStorage.setItem('safety_tracker_cloud_config_v1', keepCfg);
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(n => caches.delete(n)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {
+    alert('Reset ran into an issue: ' + (e && e.message ? e.message : e) + ' — try reloading manually.');
+  }
+  location.reload(true);
+});
+
+// ---------- Component movement history lookup ----------
+function renderComponentHistory(componentId) {
+  const resultsEl = document.getElementById('historyLookupResults');
+  const key = String(componentId).trim();
+  const entries = componentHistory[key];
+  if (!key) { resultsEl.innerHTML = ''; return; }
+  if (!entries || !entries.length) {
+    resultsEl.innerHTML = '<div class="empty-state" style="padding:16px 0;">No recorded history for "' + escapeHtml(key) + '"</div>';
+    return;
+  }
+  resultsEl.innerHTML = entries.slice().reverse().map(e => {
+    const cp = items[e.collectionPointId];
+    const cpName = cp ? itemDisplayName(cp, e.collectionPointId) : e.collectionPointId;
+    const cpUnit = cp ? cp.unit : '';
+    return `
+      <div class="history-row view-history-row" data-cp-id="${escapeAttr(e.collectionPointId)}" style="flex-direction:column;align-items:flex-start;gap:2px;cursor:${cp ? 'pointer' : 'default'};">
+        <div style="display:flex;justify-content:space-between;width:100%;">
+          <span class="hist-loc">${escapeHtml(e.role)} at ${escapeHtml(cpName)}</span>
+          <span>${new Date(e.timestamp).toLocaleDateString()}</span>
+        </div>
+        ${cpUnit ? `<div style="font-size:11px;color:var(--text-dim);">${escapeHtml(cpUnit)}</div>` : ''}
+        ${cp ? '<div style="font-size:11px;color:var(--accent);">Tap to view this collection point →</div>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+document.getElementById('historyLookupInput').addEventListener('input', (e) => {
+  renderComponentHistory(e.target.value);
+});
+document.getElementById('historyLookupResults').addEventListener('click', (e) => {
+  const row = e.target.closest('.view-history-row');
+  if (!row) return;
+  const cpId = row.dataset.cpId;
+  if (!items[cpId]) return;
+  document.getElementById('historyLookupOverlay').classList.remove('show');
+  openView(cpId);
+});
+function openComponentHistoryFor(value) {
+  document.getElementById('historyLookupInput').value = value;
+  document.getElementById('historyLookupOverlay').classList.add('show');
+  renderComponentHistory(value);
+}
+document.getElementById('componentHistoryLink').addEventListener('click', () => {
+  document.getElementById('historyLookupInput').value = '';
+  document.getElementById('historyLookupResults').innerHTML = '';
+  document.getElementById('historyLookupOverlay').classList.add('show');
+});
+document.getElementById('historyLookupCloseBtn').addEventListener('click', () => {
+  document.getElementById('historyLookupOverlay').classList.remove('show');
+});
+document.getElementById('historyLookupOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'historyLookupOverlay') document.getElementById('historyLookupOverlay').classList.remove('show');
+});
+document.getElementById('historyLookupNfcBtn').addEventListener('click', () => {
+  scanNfcIntoField('historyLookupInput');
+});
+
+// ---------- Bluetooth NFC reader (ACS ACR1555U) via acr1555u.js ----------
+// The driver is an ES module that lives next to index.html. It's loaded on demand so the app
+// still works if the file is missing. It reads tags and feeds them through the same handlers
+// as the phone's built-in NFC. (The reader can't write tags — use the phone's NFC for that.)
+let btReader = null;
+let btEntryHandler = null;   // continuous scanning (home-screen Scan NFC)
+let btOnce = null;           // one-shot field fill
+let btBusy = false;
+const btLink = document.getElementById('btReaderLink');
+
+function btReaderReady() { return !!(btReader && btReader.connected); }
+
+function btToNdefLike(tag) {
+  // Re-shape the driver's result like Web NFC's event, so readTextRecords()/serialNumber just work.
+  return {
+    serialNumber: tag.serialNumber,
+    message: { records: tag.records.filter(r => r.recordType === 'text')
+      .map(r => ({ recordType: 'text', encoding: 'utf-8', data: new TextEncoder().encode(r.text || '') })) }
+  };
+}
+
+async function btTryReadNow() {
+  if (btBusy || !btReaderReady() || (!btEntryHandler && !btOnce)) return;
+  btBusy = true;
+  try {
+    const tag = await btReader.readTag();
+    const ev = btToNdefLike(tag);
+    if (btOnce) { const h = btOnce; btOnce = null; h(ev); }
+    else if (btEntryHandler) { btEntryHandler(ev); }
+  } catch (err) {
+    // No card yet is normal — the cardpresent event will trigger another attempt.
+    if (!/No card present|ICC mute/i.test(err && err.message || '')) showToast('Reader: ' + (err && err.message || 'read failed'));
+  }
+  btBusy = false;
+}
+
+// ---- Writing through the reader ----
+// The driver only reads NDEF, but it exposes transmit(), so writing is done with the standard
+// PC/SC "Update Binary" APDU (FF D6 00 <page> 04 <4 bytes>) on NFC Forum Type 2 tags (NTAG/Ultralight).
+function btBuildTextNdefTlv(texts) {
+  const enc = new TextEncoder();
+  const recs = texts.map((t, i) => {
+    const body = enc.encode(t || '');
+    const payload = new Uint8Array(3 + body.length);
+    payload[0] = 0x02; payload[1] = 0x65; payload[2] = 0x6e;   // UTF-8, "en"
+    payload.set(body, 3);
+    if (payload.length > 255) throw new Error('Value too long to write');
+    const header = 0x01 | 0x10 | (i === 0 ? 0x80 : 0) | (i === texts.length - 1 ? 0x40 : 0); // TNF=well-known, SR, MB/ME
+    const r = new Uint8Array(4 + payload.length);
+    r[0] = header; r[1] = 1; r[2] = payload.length; r[3] = 0x54; // type 'T'
+    r.set(payload, 4);
+    return r;
+  });
+  const msg = new Uint8Array(recs.reduce((n, r) => n + r.length, 0));
+  let o = 0; recs.forEach(r => { msg.set(r, o); o += r.length; });
+  if (msg.length > 254) throw new Error('Too much data to write');
+  const tlv = new Uint8Array(msg.length + 3);
+  tlv[0] = 0x03; tlv[1] = msg.length; tlv.set(msg, 2); tlv[tlv.length - 1] = 0xfe;
+  const padded = new Uint8Array(Math.ceil(tlv.length / 4) * 4);
+  padded.set(tlv);
+  return padded;
+}
+
+function btWaitForCard(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (btReader.cardPresent) { resolve(); return; }
+    const t = setTimeout(() => { btReader.removeEventListener('cardpresent', on); reject(new Error('No tag detected — hold it on the reader')); }, timeoutMs);
+    const on = () => { clearTimeout(t); resolve(); };
+    btReader.addEventListener('cardpresent', on, { once: true });
+  });
+}
+
+async function btWriteTextRecords(texts) {
+  if (btBusy) throw new Error('Reader is busy — try again');
+  btBusy = true;
+  try {
+    await btWaitForCard(10000);
+    await btReader.powerOn();
+    const cc = await btReader.readBinary(3, 4);
+    if (cc[0] !== 0xe1) throw new Error('Tag isn\'t an NFC Forum Type 2 tag (NTAG/Ultralight) — can\'t write it with this reader');
+    const data = btBuildTextNdefTlv(texts);
+    const capacity = cc[2] * 8;
+    if (capacity && data.length > capacity) throw new Error('Tag too small (' + capacity + ' bytes) for this data');
+    for (let i = 0; i < data.length; i += 4) {
+      const r = await btReader.transmit(Uint8Array.of(0xff, 0xd6, 0x00, 4 + i / 4, 4, data[i], data[i + 1], data[i + 2], data[i + 3]));
+      if (r.length < 2 || r[r.length - 2] !== 0x90 || r[r.length - 1] !== 0x00) throw new Error('Reader refused the write at page ' + (4 + i / 4));
+    }
+    // Read it back to confirm it really took
+    const back = await btReader.readTag();
+    const want = texts.map(t => (t || '').trim());
+    const got = back.texts || [];
+    if (want.some((t, i) => (got[i] || '') !== t)) throw new Error('Written data did not read back correctly — tag may be locked');
+  } finally {
+    btBusy = false;
+  }
+}
+
+function btUpdateLink() {
+  if (btReaderReady()) {
+    const b = btReader.battery;
+    btLink.textContent = '🔵 Reader connected' + (b != null ? ' · battery ' + b + '%' : '') + ' — tap to disconnect';
+    btLink.style.color = '#4ade80';
+  } else {
+    btLink.textContent = '🔵 Connect Bluetooth NFC reader (ACR1555U)';
+    btLink.style.color = '';
+  }
+}
+
+async function btLoadDriver() {
+  try {
+    return await import(new URL('./acr1555u.js', location.href).href);
+  } catch (err) {
+    throw new Error('Could not load acr1555u.js — make sure it is uploaded next to index.html in the repo');
+  }
+}
+
+btLink.addEventListener('click', async () => {
+  if (btReaderReady()) { btReader.disconnect(); return; }
+  if (!navigator.bluetooth) { showToast('Bluetooth isn\'t available here — use Chrome on Android over https'); return; }
+  btLink.textContent = '🔵 Connecting…';
+  try {
+    const mod = await btLoadDriver();
+    if (!btReader) {
+      btReader = new mod.ACR1555U();
+      btReader.addEventListener('cardpresent', () => btTryReadNow());
+      btReader.addEventListener('battery', btUpdateLink);
+      btReader.addEventListener('ready', btUpdateLink);
+      btReader.addEventListener('disconnected', () => { btUpdateLink(); showToast('Bluetooth reader disconnected'); });
+    }
+    await btReader.connect();
+    btUpdateLink();
+    showToast('Bluetooth reader connected — scan buttons will now use it');
+  } catch (err) {
+    btUpdateLink();
+    showToast(err && err.name === 'NotFoundError' ? 'No reader chosen' : ('Reader: ' + (err && err.message || 'could not connect')));
+  }
+});
+
+// ---------- NFC entry (alternate way to find/add a collection point) ----------
+const scanNfcEntryBtn = document.getElementById('scanNfcEntryBtn');
+let nfcEntryScanning = false;
+
+async function startNfcEntryScanning() {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser — use Scan Barcode instead');
+    return;
+  }
+  nfcEntryScanning = true;
+  scanNfcEntryBtn.textContent = 'Scanning… (tap to stop)';
+  scanNfcEntryBtn.classList.add('scanning');
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader…' : 'Hold the collection point\'s tag to the back of your phone…');
+
+  try {
+    const onEntryReading = (event) => {
+      if (!nfcEntryScanning) return;
+      const writtenId = readTextRecord(event.message);
+      const value = writtenId || event.serialNumber;
+      if (!value) { showToast('Tag has no readable ID'); return; }
+      flashNfcSuccess();
+      stopNfcEntryScanning();
+      const matchId = findMatchingId(value);
+      if (matchId && matchId !== value) {
+        showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
+        openComponentHistoryFor(value);
+        return;
+      }
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      openModal(matchId || value);
+    };
+    if (btReaderReady()) {
+      btEntryHandler = onEntryReading;
+      btTryReadNow();
+    } else {
+      const reader = new NDEFReader();
+      await reader.scan();
+      reader.addEventListener('reading', onEntryReading);
+    }
+  } catch (err) {
+    showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
+    stopNfcEntryScanning();
+  }
+}
+function stopNfcEntryScanning() {
+  btEntryHandler = null;
+  nfcEntryScanning = false;
+  scanNfcEntryBtn.textContent = '📡 Scan NFC';
+  scanNfcEntryBtn.classList.remove('scanning');
+}
+scanNfcEntryBtn.addEventListener('click', () => {
+  nfcEntryScanning ? stopNfcEntryScanning() : startNfcEntryScanning();
+});
+
+// ---------- NFC field-fill (links each RFID-tagged component: frame, cylinder, masks) ----------
+document.addEventListener('click', (e) => {
+  const readBtn = e.target.closest('.scan-nfc-btn');
+  if (readBtn) scanNfcIntoField(readBtn.dataset.target, readBtn.dataset.dateTarget || null, readBtn.dataset.sizeTarget || null);
+  const writeBtn = e.target.closest('.write-nfc-btn');
+  if (writeBtn) writeNfcIdToTag(writeBtn.dataset.target, writeBtn.dataset.dateTarget || null, writeBtn.dataset.sizeTarget || null);
+  const dateBtn = e.target.closest('.write-date-btn');
+  if (dateBtn) writeDateOnlyToTag(dateBtn.dataset.target, dateBtn.dataset.dateTarget, dateBtn.dataset.sizeTarget || null);
+});
+
+function readTextRecords(message) {
+  // Returns every decoded text record on the tag, in position order (including empty ones,
+  // so a skipped middle field like "no date but has a size" doesn't shift later positions).
+  // Position 0 = ID, 1 = companion date, 2 = companion size, when present.
+  if (!message || !message.records) return [];
+  const out = [];
+  for (const record of message.records) {
+    if (record.recordType === 'text') {
+      try {
+        const decoder = new TextDecoder(record.encoding || 'utf-8');
+        out.push(decoder.decode(record.data).trim());
+      } catch (e) { out.push(''); }
+    }
+  }
+  return out;
+}
+function readTextRecord(message) {
+  const all = readTextRecords(message);
+  return all.length ? all[0] : null;
+}
+function isIsoDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
+
+// Unmistakable confirmation that a tag was actually read — a bright full-screen flash plus
+// a distinct double-pulse vibration, so it's obvious even if you're not sure the scan "took"
+// (useful when testing a new/unknown chip, not just during normal day-to-day use).
+function flashNfcSuccess() {
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+  const flash = document.getElementById('nfcFlash');
+  flash.classList.add('show');
+  setTimeout(() => { flash.classList.remove('show'); }, 180);
+}
+
+async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser — enter it manually');
+    return;
+  }
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader…' : 'Hold the tag to the back of your phone…');
+  let done = false;
+  const timeoutId = setTimeout(() => {
+    if (!done) { done = true; btOnce = null; showToast('NFC scan timed out — try again'); }
+  }, 10000);
+  try {
+    const onFieldReading = (event) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timeoutId);
+      const textRecords = readTextRecords(event.message);
+      const writtenId = textRecords[0] || null;
+      const writtenDate = textRecords[1] && isIsoDate(textRecords[1]) ? textRecords[1] : null;
+      const writtenSize = textRecords[2] || null;
+      const value = writtenId || event.serialNumber;
+      if (!value) { showToast('Tag has no readable ID'); return; }
+      flashNfcSuccess();
+      const input = document.getElementById(targetInputId);
+      if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (dateTargetId && writtenDate) {
+        const dateInput = document.getElementById(dateTargetId);
+        if (dateInput) { dateInput.value = writtenDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
+      }
+      if (sizeTargetId && writtenSize) {
+        const sizeInput = document.getElementById(sizeTargetId);
+        if (sizeInput && [...sizeInput.options].some(o => o.value === writtenSize)) {
+          sizeInput.value = writtenSize;
+          sizeInput.dispatchEvent(new Event('input', { bubbles: true }));
+          sizeInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      // Fall back to the known-equipment lookup for whichever of size/date the tag didn't carry itself
+      applyKnownInfoIfAny(value, (sizeTargetId && !writtenSize) ? sizeTargetId : null, (dateTargetId && !writtenDate) ? dateTargetId : null);
+      const finalDate = dateTargetId ? (document.getElementById(dateTargetId)?.value || '') : '';
+      const finalSize = sizeTargetId ? (document.getElementById(sizeTargetId)?.value || '') : '';
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : ''));
+      if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
+    };
+    if (btReaderReady()) {
+      btOnce = onFieldReading;
+      btTryReadNow();
+    } else {
+      const reader = new NDEFReader();
+      await reader.scan();
+      reader.addEventListener('reading', onFieldReading);
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    btOnce = null;
+    showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
+  }
+}
+
+async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser');
+    return;
+  }
+  const input = document.getElementById(targetInputId);
+  const current = input ? input.value : '';
+  const idValue = prompt('Inventory ID to write onto the tag:', current || '');
+  const trimmed = (idValue || '').trim();
+  if (!trimmed) return;
+
+  let dateValue = '';
+  if (dateTargetId) {
+    const dateInput = document.getElementById(dateTargetId);
+    const currentDate = dateInput ? dateInput.value : '';
+    const entered = prompt('Calibration/hydro date to write onto the tag (YYYY-MM-DD), leave blank to skip:', currentDate || '');
+    const trimmedDate = (entered || '').trim();
+    if (trimmedDate && isIsoDate(trimmedDate)) dateValue = trimmedDate;
+    else if (trimmedDate) showToast('Date not in YYYY-MM-DD format — skipping date, writing ID only');
+  }
+
+  // Size isn't prompted separately — whatever's currently selected in the Size dropdown gets written.
+  let sizeValue = '';
+  if (sizeTargetId) {
+    const sizeInput = document.getElementById(sizeTargetId);
+    sizeValue = sizeInput ? sizeInput.value : '';
+  }
+
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader to write…' : 'Hold the blank/existing tag to the back of your phone to write…');
+  let done = false;
+  const timeoutId = setTimeout(() => {
+    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+  }, 10000);
+  try {
+    const records = [{ recordType: 'text', data: trimmed }];
+    if (dateValue || sizeValue) records.push({ recordType: 'text', data: dateValue });
+    if (sizeValue) records.push({ recordType: 'text', data: sizeValue });
+    if (btReaderReady()) {
+      await btWriteTextRecords(records.map(r => r.data));
+    } else {
+      const writer = new NDEFReader();
+      await writer.write({ records });
+    }
+    done = true;
+    clearTimeout(timeoutId);
+    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    if (input) { input.value = trimmed; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (dateValue && dateTargetId) {
+      const dateInput = document.getElementById(dateTargetId);
+      if (dateInput) { dateInput.value = dateValue; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+    showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + (sizeValue ? ' + size ' + sizeValue : '') + ' to tag');
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (!done) {
+      done = true;
+      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
+    }
+  }
+}
+
+async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
+  if (!btReaderReady() && !('NDEFReader' in window)) {
+    showToast('NFC isn\'t available in this browser');
+    return;
+  }
+  const input = document.getElementById(targetInputId);
+  const currentId = input ? input.value.trim() : '';
+  if (!currentId) {
+    showToast('No ID linked here yet — use the ✏️ button first to write an ID + date together');
+    return;
+  }
+  const dateInput = document.getElementById(dateTargetId);
+  const currentDate = dateInput ? dateInput.value : '';
+  const entered = prompt('New date to write onto the tag (YYYY-MM-DD), keeping ID "' + currentId + '":', currentDate || '');
+  const trimmedDate = (entered || '').trim();
+  if (!trimmedDate) return;
+  if (!isIsoDate(trimmedDate)) { showToast('Date must be in YYYY-MM-DD format'); return; }
+
+  // Preserve whatever size is currently selected too, so a date-only refresh doesn't erase it.
+  let sizeValue = '';
+  if (sizeTargetId) {
+    const sizeInput = document.getElementById(sizeTargetId);
+    sizeValue = sizeInput ? sizeInput.value : '';
+  }
+
+  showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader to update the date…' : 'Hold the tag to the back of your phone to update the date…');
+  let done = false;
+  const timeoutId = setTimeout(() => {
+    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+  }, 10000);
+  try {
+    const records = [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }];
+    if (sizeValue) records.push({ recordType: 'text', data: sizeValue });
+    if (btReaderReady()) {
+      await btWriteTextRecords(records.map(r => r.data));
+    } else {
+      const writer = new NDEFReader();
+      await writer.write({ records });
+    }
+    done = true;
+    clearTimeout(timeoutId);
+    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    if (dateInput) { dateInput.value = trimmedDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
+    showToast('Updated date to ' + trimmedDate + ' (ID "' + currentId + '" unchanged)');
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (!done) {
+      done = true;
+      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
+    }
+  }
+}
+
+// ---------- Init ----------
+if (!window.isSecureContext) {
+  showBanner('This page must be served over HTTPS (or localhost) for NFC/camera to work.');
+}
+(async function init() {
+  loadUnits();
+  loadComponentHistory();
+  loadEquipmentRegistry();
+  await loadItems();
+  populateFilters();
+  renderList();
+  cloudAutoStart();
+})();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
   connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com;
   frame-src https://*.firebaseapp.com https://*.googleapis.com https://accounts.google.com;
   frame-ancestors 'none';
