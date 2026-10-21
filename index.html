@@ -51,12 +51,6 @@
   #scanNfcEntryBtn { background: #fbbf24; color: #3a2c02; }
   #scanNfcEntryBtn.scanning { background: var(--danger); color: #3f0d0d; animation: pulse 1.4s infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-  #readerBtn {
-    margin-top: 10px; width: 100%; border-radius: 999px; padding: 10px 8px; font-size: 13px; font-weight: 600;
-    cursor: pointer; background: transparent; color: var(--text-dim); border: 1px dashed var(--card-border);
-  }
-  #readerBtn.connected { color: #60a5fa; border: 1px solid #60a5fa; }
-  #readerBtn.busy { animation: pulse 1.4s infinite; }
   button:disabled { background: #475569 !important; color: #94a3b8 !important; cursor: not-allowed; }
   .scan-hint { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
   .manual-link {
@@ -237,7 +231,6 @@
     <button id="scanBarcodeEntryBtn">📷 Scan Barcode</button>
     <button id="scanNfcEntryBtn">📡 Scan NFC</button>
   </div>
-  <button type="button" id="readerBtn">🔵 Connect Bluetooth NFC reader</button>
   <div class="scan-hint" id="scanHint">Scan the collection point's barcode or RFID tag to find or add its record</div>
   <button type="button" class="manual-link" id="manualEntryLink">Can't scan? Enter an ID manually</button>
   <button type="button" class="manual-link" id="componentHistoryLink">📜 Look up a Frame/Cylinder/Mask's movement history</button>
@@ -245,6 +238,7 @@
   <button type="button" class="manual-link" id="startNewMonthLink" style="color:#fbbf24;">🗓️ Start new inspection month</button>
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
+  <button type="button" class="manual-link" id="customReportLink">📊 Build a custom Excel report (pick areas &amp; equipment)</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
   <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="uploadMonthlyLink">📥 Import monthly inspection results</button>
@@ -614,6 +608,31 @@
     <div id="historyLookupResults" style="margin-top:16px;"></div>
     <div class="modal-buttons">
       <button id="historyLookupCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="customReportOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>Custom Excel report</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">Pick which areas (units) and which equipment to include.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+      <strong>Areas / units</strong>
+      <span><button type="button" class="manual-link crAll" data-group="unit" data-on="1">All</button> <button type="button" class="manual-link crAll" data-group="unit" data-on="0">None</button></span>
+    </div>
+    <div id="crUnits" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong>Equipment</strong>
+      <span><button type="button" class="manual-link crAll" data-group="type" data-on="1">All</button> <button type="button" class="manual-link crAll" data-group="type" data-on="0">None</button></span>
+    </div>
+    <div id="crTypes" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;"></div>
+    <strong>Layout</strong>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="type" checked> One sheet per equipment type (Frames/Cylinders/Masks include ones inside stations &amp; cabinets)</label>
+    <label style="display:block;margin:6px 0;"><input type="radio" name="crLayout" value="unit"> One sheet per unit (original monthly workbook layout)</label>
+    <div id="crSummary" style="color:var(--text-dim);font-size:13px;margin-top:8px;"></div>
+    <div class="modal-buttons">
+      <button id="crCloseBtn" style="background:#334155;color:var(--text);">Cancel</button>
+      <button id="crDownloadBtn">Download XLSX</button>
     </div>
   </div>
 </div>
@@ -1961,6 +1980,76 @@ document.getElementById('downloadByTypeCloseBtn').addEventListener('click', () =
   document.getElementById('downloadByTypeOverlay').classList.remove('show');
 });
 
+// ---------- Custom report: pick areas (units) and equipment ----------
+const CR_TYPE_MAP = { station: 'SCBA Station', cylinder: 'SCBA Cylinder', frame: 'SCBA Frame', mask: 'SCBA Mask', maskcab: 'Mask Cabinet',
+  ext: 'Extinguisher', light: 'Emergency Light', eyewash: 'Eyewash Station', spill: 'Spill Kit', sar: 'SAR' };
+const CR_NO_UNIT = '(No unit)';
+
+function crSelected(group) {
+  return Array.from(document.querySelectorAll('#customReportOverlay input[data-cr="' + group + '"]:checked')).map(el => el.value);
+}
+function crFilteredItems() {
+  const units = new Set(crSelected('unit'));
+  const out = {};
+  Object.entries(items).forEach(([id, i]) => { if (units.has(i.unit || CR_NO_UNIT)) out[id] = i; });
+  return out;
+}
+function crBuildSheets() {
+  const keys = crSelected('type');
+  const byUnit = crFilteredItems();
+  const layout = (document.querySelector('input[name="crLayout"]:checked') || {}).value;
+  if (layout === 'unit') {
+    const types = new Set(keys.map(k => CR_TYPE_MAP[k]));
+    const narrowed = {};
+    Object.entries(byUnit).forEach(([id, i]) => { if (types.has(i.type)) narrowed[id] = i; });
+    const sheets = buildXlsxSheetsFromItems(narrowed);
+    return (sheets.length === 1 && sheets[0].name === 'Sheet1') ? [] : sheets;
+  }
+  return keys.map(k => buildTypeSheet(k, byUnit)).filter(sh => sh && sh.rows.length > 1);
+}
+function crUpdateSummary() {
+  const el = document.getElementById('crSummary');
+  if (!el) return;
+  const sheets = crBuildSheets();
+  const rows = sheets.reduce((n, sh) => n + sh.rows.length - 1, 0);
+  el.textContent = sheets.length ? (sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's') + ', ' + rows + ' rows') : 'Nothing selected matches any records';
+  document.getElementById('crDownloadBtn').disabled = !sheets.length;
+}
+document.getElementById('customReportLink').addEventListener('click', () => {
+  const unitCounts = {};
+  Object.values(items).forEach(i => { const u = i.unit || CR_NO_UNIT; unitCounts[u] = (unitCounts[u] || 0) + 1; });
+  document.getElementById('crUnits').innerHTML = Object.keys(unitCounts).sort().map(u =>
+    `<label><input type="checkbox" data-cr="unit" value="${escapeHtml(u)}" checked> ${escapeHtml(u)} <span style="color:var(--text-dim);">(${unitCounts[u]})</span></label>`).join('');
+  document.getElementById('crTypes').innerHTML = DOWNLOAD_TYPES.map(t =>
+    `<label><input type="checkbox" data-cr="type" value="${t.key}" checked> ${t.label}</label>`).join('');
+  document.getElementById('customReportOverlay').classList.add('show');
+  crUpdateSummary();
+});
+document.getElementById('customReportOverlay').addEventListener('change', crUpdateSummary);
+document.getElementById('customReportOverlay').addEventListener('click', (e) => {
+  const b = e.target.closest('.crAll');
+  if (!b) return;
+  document.querySelectorAll('#customReportOverlay input[data-cr="' + b.dataset.group + '"]').forEach(c => { c.checked = b.dataset.on === '1'; });
+  crUpdateSummary();
+});
+document.getElementById('crCloseBtn').addEventListener('click', () => {
+  document.getElementById('customReportOverlay').classList.remove('show');
+});
+document.getElementById('crDownloadBtn').addEventListener('click', () => {
+  const sheets = crBuildSheets();
+  if (!sheets.length) return;
+  const bytes = buildXlsxFile(sheets);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'safety_report_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Report downloaded — ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's'));
+  document.getElementById('customReportOverlay').classList.remove('show');
+});
+
 // ---------- Export (flat CSV, no external dependencies) ----------
 function csvEscape(v) {
   if (v === null || v === undefined) v = '';
@@ -2793,53 +2882,42 @@ document.getElementById('historyLookupNfcBtn').addEventListener('click', () => {
 const scanNfcEntryBtn = document.getElementById('scanNfcEntryBtn');
 let nfcEntryScanning = false;
 
-let cancelEntryReaderWait = null;
 async function startNfcEntryScanning() {
-  const phoneNfc = 'NDEFReader' in window;
-  const useReader = readerIsReady();
-  if (!phoneNfc && !useReader) {
+  if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — use Scan Barcode instead');
     return;
   }
   nfcEntryScanning = true;
   scanNfcEntryBtn.textContent = 'Scanning… (tap to stop)';
   scanNfcEntryBtn.classList.add('scanning');
-  showToast(useReader ? 'Set the tag on the reader (or hold it to your phone)…' : 'Hold the collection point\'s tag to the back of your phone…');
+  showToast('Hold the collection point\'s tag to the back of your phone…');
 
-  const handleTag = (texts, serialNumber) => {
-    if (!nfcEntryScanning) return;
-    const writtenId = texts.length ? texts[0] : null;
-    const value = writtenId || serialNumber;
-    if (!value) { showToast('Tag has no readable ID'); return; }
-    flashNfcSuccess();
-    stopNfcEntryScanning();
-    const matchId = findMatchingId(value);
-    if (matchId && matchId !== value) {
-      showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
-      openComponentHistoryFor(value);
-      return;
-    }
-    showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
-    openModal(matchId || value);
-  };
-
-  if (useReader) cancelEntryReaderWait = waitForReaderTag((tag) => handleTag(tag.texts, tag.serialNumber));
-  if (!phoneNfc) return;
   try {
     const reader = new NDEFReader();
     await reader.scan();
     reader.addEventListener('reading', (event) => {
-      handleTag(readTextRecords(event.message), event.serialNumber);
+      if (!nfcEntryScanning) return;
+      const writtenId = readTextRecord(event.message);
+      const value = writtenId || event.serialNumber;
+      if (!value) { showToast('Tag has no readable ID'); return; }
+      flashNfcSuccess();
+      stopNfcEntryScanning();
+      const matchId = findMatchingId(value);
+      if (matchId && matchId !== value) {
+        showToast('Found on: ' + itemDisplayName(items[matchId], matchId));
+        openComponentHistoryFor(value);
+        return;
+      }
+      showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value);
+      openModal(matchId || value);
     });
   } catch (err) {
-    if (useReader) return; // phone NFC unavailable (e.g. turned off) — the reader still works
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
     stopNfcEntryScanning();
   }
 }
 function stopNfcEntryScanning() {
   nfcEntryScanning = false;
-  if (cancelEntryReaderWait) { cancelEntryReaderWait(); cancelEntryReaderWait = null; }
   scanNfcEntryBtn.textContent = '📡 Scan NFC';
   scanNfcEntryBtn.classList.remove('scanning');
 }
@@ -2906,32 +2984,27 @@ async function copyForExcel(parts) {
 }
 
 async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
-  const phoneNfc = 'NDEFReader' in window;
-  const useReader = readerIsReady();
-  if (!phoneNfc && !useReader) {
+  if (!('NDEFReader' in window)) {
     showToast('NFC isn\'t available in this browser — enter it manually');
     return;
   }
-  showToast(useReader ? 'Set the tag on the reader (or hold it to your phone)…' : 'Hold the tag to the back of your phone…');
+  showToast('Hold the tag to the back of your phone…');
   let done = false;
-  let cancelReaderWait = null;
   const timeoutId = setTimeout(() => {
-    if (!done) {
-      done = true;
-      if (cancelReaderWait) cancelReaderWait();
-      showToast('NFC scan timed out — try again');
-    }
-  }, useReader ? 20000 : 10000);
-
-  const handleTag = (textRecords, serialNumber) => {
+    if (!done) { done = true; showToast('NFC scan timed out — try again'); }
+  }, 10000);
+  try {
+    const reader = new NDEFReader();
+    await reader.scan();
+    reader.addEventListener('reading', (event) => {
       if (done) return;
       done = true;
       clearTimeout(timeoutId);
-      if (cancelReaderWait) cancelReaderWait();
+      const textRecords = readTextRecords(event.message);
       const writtenId = textRecords[0] || null;
       const writtenDate = textRecords[1] && isIsoDate(textRecords[1]) ? textRecords[1] : null;
       const writtenSize = textRecords[2] || null;
-      const value = writtenId || serialNumber;
+      const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
       flashNfcSuccess();
       const input = document.getElementById(targetInputId);
@@ -2956,18 +3029,8 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
         showToast((writtenId ? 'Inventory ID: ' : 'NFC serial: ') + value + (finalDate ? ' · Date: ' + finalDate : '') + (finalSize ? ' · Size: ' + finalSize : '') + (copied ? ' · 📋 copied for Excel' : ''));
       });
       if (targetInputId === 'historyLookupInput') renderComponentHistory(value);
-  };
-
-  if (useReader) cancelReaderWait = waitForReaderTag((tag) => handleTag(tag.texts, tag.serialNumber));
-  if (!phoneNfc) return;
-  try {
-    const reader = new NDEFReader();
-    await reader.scan();
-    reader.addEventListener('reading', (event) => {
-      handleTag(readTextRecords(event.message), event.serialNumber);
     });
   } catch (err) {
-    if (useReader) return; // phone NFC unavailable — keep waiting on the reader
     clearTimeout(timeoutId);
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
   }
@@ -3078,115 +3141,6 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
     }
   }
 }
-
-// ---------- Bluetooth NFC reader (ACS ACR1555U) ----------
-// Optional second way to read tags. When connected, every 📡 scan listens on both the
-// phone's own NFC and the reader, and whichever sees a tag first wins.
-const readerBtn = document.getElementById('readerBtn');
-let readerLib = null;          // the acr1555u.js module, loaded on first use
-let extReader = null;          // ACR1555U instance
-let readerReady = false;
-let readerBusy = false;
-let readerConnecting = false;
-const readerWaiters = [];      // scans currently waiting for a tag on the reader
-
-function readerIsReady() { return readerReady && extReader && extReader.connected; }
-
-function updateReaderBtn(text) {
-  readerBtn.classList.toggle('connected', readerReady);
-  if (text) { readerBtn.textContent = text; return; }
-  if (readerReady) {
-    const batt = extReader.battery != null ? ' · 🔋' + extReader.battery + '%' : '';
-    readerBtn.textContent = '🔵 Reader connected' + batt + ' (tap to disconnect)';
-  } else {
-    readerBtn.textContent = '🔵 Connect Bluetooth NFC reader';
-  }
-}
-
-async function getReader() {
-  if (!readerLib) readerLib = await import('./acr1555u.js');
-  if (!extReader) {
-    extReader = new readerLib.ACR1555U({ log: (m) => console.log('[reader]', m) });
-    extReader.addEventListener('ready', () => { readerReady = true; updateReaderBtn(); });
-    extReader.addEventListener('battery', () => updateReaderBtn());
-    extReader.addEventListener('disconnected', () => {
-      readerReady = false;
-      updateReaderBtn();
-      if (readerWaiters.length) showToast('NFC reader disconnected');
-    });
-    extReader.addEventListener('cardpresent', () => readTagFromReader());
-  }
-  return extReader;
-}
-
-// Register a one-shot handler for the next tag read on the reader. Returns a cancel function.
-function waitForReaderTag(onTag) {
-  const entry = { onTag };
-  readerWaiters.push(entry);
-  if (extReader && extReader.cardPresent) readTagFromReader();   // tag already sitting on it
-  return () => { const i = readerWaiters.indexOf(entry); if (i >= 0) readerWaiters.splice(i, 1); };
-}
-
-async function readTagFromReader() {
-  if (readerBusy || !readerIsReady()) return;
-  if (!readerWaiters.length) {
-    showToast('Tag on reader — tap 📡 Scan NFC or a 📡 field button to use it');
-    return;
-  }
-  readerBusy = true;
-  try {
-    const tag = await extReader.readTag();
-    const w = readerWaiters.shift();
-    if (w) w.onTag(tag);
-  } catch (err) {
-    showToast('Reader: ' + (err && err.message ? err.message : 'read failed') + ' — lift the tag and set it down again');
-  } finally {
-    readerBusy = false;
-  }
-}
-
-async function connectReader(silent) {
-  if (readerConnecting) return;
-  readerConnecting = true;
-  updateReaderBtn('🔵 Connecting to reader…');
-  readerBtn.classList.add('busy');
-  try {
-    const r = await getReader();
-    if (r.device) await r.reconnect();
-    else {
-      const remembered = await readerLib.ACR1555U.rememberedDevice();
-      if (remembered) await r.useDevice(remembered);
-      else if (silent) { updateReaderBtn(); return; }
-      else await r.connect();
-    }
-    if (!silent) showToast('NFC reader connected');
-  } catch (err) {
-    readerReady = false;
-    if (extReader) extReader.disconnect();
-    updateReaderBtn();
-    if (!silent && !(err && err.name === 'NotFoundError')) {
-      showToast('Reader connect failed: ' + (err && err.message ? err.message : 'unknown error') + ' — press the reader\'s button and try again');
-    }
-  } finally {
-    readerConnecting = false;
-    readerBtn.classList.remove('busy');
-  }
-}
-
-readerBtn.addEventListener('click', () => {
-  if (readerIsReady()) {
-    if (confirm('Disconnect the Bluetooth NFC reader?')) extReader.disconnect();
-    return;
-  }
-  if (!navigator.bluetooth) {
-    showToast('Bluetooth readers need Chrome on Android');
-    return;
-  }
-  connectReader(false);
-});
-if (!navigator.bluetooth) readerBtn.style.display = 'none';
-// Quietly reconnect to a reader this phone already paired with the app, if Chrome allows it.
-else if (navigator.bluetooth.getDevices) connectReader(true);
 
 // ---------- Init ----------
 if (!window.isSecureContext) {
