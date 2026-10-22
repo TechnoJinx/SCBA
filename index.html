@@ -251,6 +251,10 @@
 
 <div class="toolbar">
   <input type="text" id="searchInput" placeholder="Search...">
+  <select id="viewMode" title="What to list">
+    <option value="points">📍 Collection points</option>
+    <option value="pieces">🔧 Equipment pieces (frames, cylinders, masks)</option>
+  </select>
   <select id="typeFilter"><option value="">All types</option></select>
   <select id="unitFilter"><option value="">All units</option></select>
 </div>
@@ -1074,7 +1078,7 @@ function getLinkedComponentEntries(typeFilter) {
         if (item.scbaLastCalibration) parts.push('Cal ' + item.scbaLastCalibration);
         if (item.scbaFrameSerialNumber) parts.push('SN ' + item.scbaFrameSerialNumber);
         virtual.push({ id: parentId, name: item.scbaFrameId, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel });
+          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
       }
       if (typeFilter === 'SCBA Cylinder' && item.scbaCylinderId) {
         const parts = [];
@@ -1082,7 +1086,7 @@ function getLinkedComponentEntries(typeFilter) {
         if (item.scbaPressure) parts.push(item.scbaPressure + ' psi');
         if (item.scbaCylinderSerialNumber) parts.push('SN ' + item.scbaCylinderSerialNumber);
         virtual.push({ id: parentId, name: item.scbaCylinderId, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel });
+          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
       }
       if (typeFilter === 'SCBA Mask') {
         [['scbaLMaskId', 'scbaLMaskExpDate', 'Large'], ['scbaMMaskId', 'scbaMMaskExpDate', 'Medium'], ['scbaSMaskId', 'scbaSMaskExpDate', 'Small']]
@@ -1091,7 +1095,7 @@ function getLinkedComponentEntries(typeFilter) {
               const parts = [sizeLabel + ' Mask'];
               if (item[dateField]) parts.push(item[dateField]);
               virtual.push({ id: parentId, name: item[idField], summary: parts.join(' · '), unit: item.unit,
-                result: '', updatedAt: item.updatedAt, via: parentLabel });
+                result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
             }
           });
       }
@@ -1101,7 +1105,7 @@ function getLinkedComponentEntries(typeFilter) {
         const parts = [(m.size || '') + ' Mask'];
         if (m.expDate) parts.push(m.expDate);
         virtual.push({ id: parentId, name: m.id, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel });
+          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
       });
     }
   });
@@ -1114,22 +1118,31 @@ function renderList() {
   const typeFilterVal = document.getElementById('typeFilter').value;
   const unitFilterVal = document.getElementById('unitFilter').value;
 
+  const PIECE_TYPES = ['SCBA Frame', 'SCBA Cylinder', 'SCBA Mask'];
+  const piecesMode = document.getElementById('viewMode').value === 'pieces';
+  const pieceTypes = piecesMode ? (PIECE_TYPES.includes(typeFilterVal) ? [typeFilterVal] : (typeFilterVal ? [] : PIECE_TYPES)) : [];
+
   const realEntries = Object.entries(items).filter(([id, item]) => {
-    if (typeFilterVal && item.type !== typeFilterVal) return false;
+    if (piecesMode) {
+      // Equipment-pieces view: only individually tracked pieces (standalone Frame/Cylinder/Mask records)
+      if (!pieceTypes.includes(item.type)) return false;
+    } else if (typeFilterVal && item.type !== typeFilterVal) return false;
     if (unitFilterVal && item.unit !== unitFilterVal) return false;
     if (!query) return true;
-    const hay = itemSearchHay(item, id);
+    const hay = itemSearchHay(item, id) + ' ' + [item.stdCylSerialNumber, item.stdFrameSerialNumber, item.stdMaskSize, item.stdMaskId, item.stdCylId, item.stdFrameId]
+      .filter(Boolean).join(' ').toLowerCase();
     return hay.includes(query);
   }).map(([id, item]) => ({ id, item, virtual: null }));
 
   let virtualEntries = [];
-  if (['SCBA Frame', 'SCBA Cylinder', 'SCBA Mask'].includes(typeFilterVal)) {
-    virtualEntries = getLinkedComponentEntries(typeFilterVal).filter(v => {
+  const virtualTypes = piecesMode ? pieceTypes : (PIECE_TYPES.includes(typeFilterVal) ? [typeFilterVal] : []);
+  virtualTypes.forEach(vt => {
+    getLinkedComponentEntries(vt).filter(v => {
       if (unitFilterVal && v.unit !== unitFilterVal) return false;
       if (!query) return true;
-      return (v.name + ' ' + v.via + ' ' + (v.unit || '')).toLowerCase().includes(query);
-    }).map(v => ({ id: v.id, item: items[v.id], virtual: v }));
-  }
+      return (v.name + ' ' + v.via + ' ' + (v.unit || '') + ' ' + (v.summary || '')).toLowerCase().includes(query);
+    }).forEach(v => virtualEntries.push({ id: v.id, item: items[v.id], virtual: v }));
+  });
 
   const entries = [...realEntries, ...virtualEntries]
     .sort((a, b) => (b.item.updatedAt || 0) - (a.item.updatedAt || 0));
@@ -1138,7 +1151,7 @@ function renderList() {
     Object.keys(items).length + ' item' + (Object.keys(items).length === 1 ? '' : 's') + ' tracked';
 
   if (entries.length === 0) {
-    listEl.innerHTML = '<div class="empty-state">No items yet — scan a collection point barcode to add one.</div>';
+    listEl.innerHTML = '<div class="empty-state">' + (piecesMode ? 'No matching equipment pieces.' : 'No items yet — scan a collection point barcode to add one.') + '</div>';
     return;
   }
 
@@ -1148,7 +1161,7 @@ function renderList() {
       : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
     const name = virtual ? virtual.name : itemDisplayName(item, id);
     const summary = virtual ? virtual.summary : itemSummaryLine(item);
-    const typeLabel = virtual ? typeFilterVal : item.type;
+    const typeLabel = virtual ? (virtual.vtype || typeFilterVal) : item.type;
     const unitLabel = virtual ? virtual.unit : item.unit;
     return `
     <div class="item-card" data-id="${escapeAttr(id)}">
@@ -1668,6 +1681,7 @@ document.getElementById('deleteItemBtn').addEventListener('click', () => {
 
 document.getElementById('searchInput').addEventListener('input', renderList);
 document.getElementById('typeFilter').addEventListener('change', renderList);
+document.getElementById('viewMode').addEventListener('change', renderList);
 document.getElementById('unitFilter').addEventListener('change', renderList);
 
 // ---------- XLSX export (matches the original per-Unit workbook layout) ----------
