@@ -619,6 +619,32 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="pieceOverlay">
+  <div class="modal">
+    <h2 id="pieceTitle">Equipment piece</h2>
+    <p id="pieceInfo" style="color:var(--text-dim);font-size:13px;margin-top:-8px;"></p>
+    <label>ID (RFID / barcode)</label>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <input type="text" id="pieceIdInput" style="flex:1;">
+      <button type="button" class="scan-nfc-btn" data-target="pieceIdInput" data-date-target="pieceDateInput" data-size-target="pieceSizeInput" title="Read tag">📡</button>
+      <button type="button" class="write-nfc-btn" data-target="pieceIdInput" data-date-target="pieceDateInput" data-size-target="pieceSizeInput" title="Write ID, date &amp; size to tag">✏️</button>
+      <button type="button" class="write-date-btn" data-target="pieceIdInput" data-date-target="pieceDateInput" data-size-target="pieceSizeInput" title="Update date only on tag">📅</button>
+    </div>
+    <label id="pieceDateLabel" style="margin-top:8px;display:block;">Date</label>
+    <input type="text" id="pieceDateInput" placeholder="YYYY-MM-DD" style="width:100%;">
+    <div id="pieceSizeWrap" style="display:none;margin-top:8px;">
+      <label>Size</label>
+      <select id="pieceSizeInput" style="width:100%;"><option value="Large">Large</option><option value="Medium">Medium</option><option value="Small">Small</option></select>
+    </div>
+    <p style="color:var(--text-dim);font-size:12px;margin-top:10px;">✏️ writes the ID, date and size above onto the tag. 📅 updates only the date. 📡 reads a tag into these boxes. Writing a tag also saves these values on the record; Save keeps edits without writing a tag.</p>
+    <div class="modal-buttons">
+      <button id="pieceCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="pieceOpenParentBtn" style="background:#334155;color:var(--text);">Open location</button>
+      <button id="pieceSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="cloudOverlay">
   <div class="modal" style="max-height:90vh;overflow-y:auto;">
     <h2>☁️ Cloud sync</h2>
@@ -1070,48 +1096,116 @@ function itemSearchHay(item, id) {
 // tapping View/Edit opens the actual parent record, since that's where the data lives.
 function getLinkedComponentEntries(typeFilter) {
   const virtual = [];
+  const vtype = typeFilter;
   Object.entries(items).forEach(([parentId, item]) => {
+    const add = (name, summary, slot) => virtual.push({ id: parentId, name, summary, unit: item.unit, result: '',
+      updatedAt: item.updatedAt, via: itemDisplayName(item, parentId), vtype, slot });
     if (item.type === 'SCBA Station') {
-      const parentLabel = itemDisplayName(item, parentId);
       if (typeFilter === 'SCBA Frame' && item.scbaFrameId) {
         const parts = [];
         if (item.scbaLastCalibration) parts.push('Cal ' + item.scbaLastCalibration);
         if (item.scbaFrameSerialNumber) parts.push('SN ' + item.scbaFrameSerialNumber);
-        virtual.push({ id: parentId, name: item.scbaFrameId, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
+        add(item.scbaFrameId, parts.join(' · '), { kind: 'station', which: 'frame' });
       }
       if (typeFilter === 'SCBA Cylinder' && item.scbaCylinderId) {
         const parts = [];
         if (item.scbaLastHydro) parts.push('Hydro ' + item.scbaLastHydro);
         if (item.scbaPressure) parts.push(item.scbaPressure + ' psi');
         if (item.scbaCylinderSerialNumber) parts.push('SN ' + item.scbaCylinderSerialNumber);
-        virtual.push({ id: parentId, name: item.scbaCylinderId, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
+        add(item.scbaCylinderId, parts.join(' · '), { kind: 'station', which: 'cyl' });
       }
       if (typeFilter === 'SCBA Mask') {
-        [['scbaLMaskId', 'scbaLMaskExpDate', 'Large'], ['scbaMMaskId', 'scbaMMaskExpDate', 'Medium'], ['scbaSMaskId', 'scbaSMaskExpDate', 'Small']]
-          .forEach(([idField, dateField, sizeLabel]) => {
+        [['scbaLMaskId', 'scbaLMaskExpDate', 'Large', 'L'], ['scbaMMaskId', 'scbaMMaskExpDate', 'Medium', 'M'], ['scbaSMaskId', 'scbaSMaskExpDate', 'Small', 'S']]
+          .forEach(([idField, dateField, sizeLabel, which]) => {
             if (item[idField]) {
               const parts = [sizeLabel + ' Mask'];
               if (item[dateField]) parts.push(item[dateField]);
-              virtual.push({ id: parentId, name: item[idField], summary: parts.join(' · '), unit: item.unit,
-                result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
+              add(item[idField], parts.join(' · '), { kind: 'station', which });
             }
           });
       }
     } else if (item.type === 'Mask Cabinet' && typeFilter === 'SCBA Mask') {
-      const parentLabel = itemDisplayName(item, parentId);
-      (item.masks || []).filter(m => m.id).forEach(m => {
+      (item.masks || []).forEach((m, idx) => {
+        if (!m.id) return;
         const parts = [(m.size || '') + ' Mask'];
         if (m.expDate) parts.push(m.expDate);
-        virtual.push({ id: parentId, name: m.id, summary: parts.join(' · '), unit: item.unit,
-          result: '', updatedAt: item.updatedAt, via: parentLabel, vtype: 'SCBA ' + (typeFilter === 'SCBA Frame' ? 'Frame' : typeFilter === 'SCBA Cylinder' ? 'Cylinder' : 'Mask') });
+        add(m.id, parts.join(' · '), { kind: 'cabinet', idx });
       });
     }
   });
   return virtual;
 }
 
+// ---- Equipment piece detail + tag writing (reached from the "Equipment pieces" list) ----
+// Resolves a list entry to the record fields that hold this piece's ID / date / size.
+function pieceRef(entry) {
+  const { item, virtual } = entry;
+  if (!virtual) {
+    if (item.type === 'SCBA Frame') return { type: 'SCBA Frame', idF: 'stdFrameId', dateF: 'stdFrameLastCalibration', serialF: 'stdFrameSerialNumber', dateLabel: 'Last calibration', obj: item };
+    if (item.type === 'SCBA Cylinder') return { type: 'SCBA Cylinder', idF: 'stdCylId', dateF: 'stdCylLastHydro', serialF: 'stdCylSerialNumber', dateLabel: 'Last hydro', obj: item };
+    if (item.type === 'SCBA Mask') return { type: 'SCBA Mask', idF: 'stdMaskId', dateF: 'stdMaskExpDate', sizeF: 'stdMaskSize', dateLabel: 'Calibration / EXP date', obj: item };
+    return null;
+  }
+  const sl = virtual.slot;
+  if (sl.kind === 'station') {
+    if (sl.which === 'frame') return { type: 'SCBA Frame', idF: 'scbaFrameId', dateF: 'scbaLastCalibration', serialF: 'scbaFrameSerialNumber', dateLabel: 'Last calibration', obj: item };
+    if (sl.which === 'cyl') return { type: 'SCBA Cylinder', idF: 'scbaCylinderId', dateF: 'scbaLastHydro', serialF: 'scbaCylinderSerialNumber', dateLabel: 'Last hydro', obj: item };
+    const size = { L: 'Large', M: 'Medium', S: 'Small' }[sl.which];
+    return { type: 'SCBA Mask', idF: 'scba' + sl.which + 'MaskId', dateF: 'scba' + sl.which + 'MaskExpDate', fixedSize: size, dateLabel: 'Calibration / EXP date', obj: item };
+  }
+  const m = (item.masks || [])[sl.idx];
+  if (!m) return null;
+  return { type: 'SCBA Mask', idF: 'id', dateF: 'expDate', sizeF: 'size', dateLabel: 'Calibration / EXP date', obj: m, parentItem: item };
+}
+
+let pieceCtx = null;   // { entry, ref }
+function openPiece(entry) {
+  const ref = pieceRef(entry);
+  if (!ref) { showToast('Could not open that piece'); return; }
+  pieceCtx = { entry, ref };
+  const o = ref.obj;
+  const id = o[ref.idF] || '';
+  document.getElementById('pieceTitle').textContent = ref.type.replace('SCBA ', '') + ' ' + id;
+  document.getElementById('pieceIdInput').value = id;
+  document.getElementById('pieceDateLabel').textContent = ref.dateLabel;
+  document.getElementById('pieceDateInput').value = o[ref.dateF] || '';
+  const sizeWrap = document.getElementById('pieceSizeWrap');
+  const sizeSel = document.getElementById('pieceSizeInput');
+  if (ref.type === 'SCBA Mask') {
+    sizeWrap.style.display = '';
+    sizeSel.value = ref.fixedSize || o[ref.sizeF] || getKnownSizeForComponent(id) || 'Large';
+    sizeSel.disabled = !!ref.fixedSize;
+  } else { sizeWrap.style.display = 'none'; sizeSel.value = ''; }
+  const serial = ref.serialF ? (o[ref.serialF] || '') : '';
+  document.getElementById('pieceInfo').textContent =
+    (entry.virtual ? 'Located in: ' + entry.virtual.via + (entry.item.unit ? ' (' + entry.item.unit + ')' : '') : 'Standalone — not assigned to a location') +
+    (serial ? ' · Serial ' + serial : '');
+  document.getElementById('pieceOverlay').classList.add('show');
+}
+function closePiece() { document.getElementById('pieceOverlay').classList.remove('show'); pieceCtx = null; }
+
+// Copies whatever is in the piece form back onto the real record (so the tag and the app agree).
+function savePieceEdits() {
+  if (!pieceCtx) return;
+  const { ref, entry } = pieceCtx;
+  const o = ref.obj;
+  const newId = document.getElementById('pieceIdInput').value.trim();
+  const newDate = document.getElementById('pieceDateInput').value.trim();
+  const newSize = document.getElementById('pieceSizeInput').value;
+  if (!newId) { showToast('ID can\'t be empty'); return false; }
+  const idChanged = o[ref.idF] !== newId;
+  o[ref.idF] = newId;
+  o[ref.dateF] = newDate;
+  if (ref.sizeF && newSize) o[ref.sizeF] = newSize;
+  const target = entry.item;
+  target.updatedAt = Date.now();
+  if (idChanged) recordComponentLinksForItem(target, entry.id, target.updatedAt);
+  saveItems(); saveComponentHistory();
+  renderList();
+  return true;
+}
+
+let lastListEntries = [];
 function renderList() {
   const listEl = document.getElementById('itemList');
   const query = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -1155,7 +1249,8 @@ function renderList() {
     return;
   }
 
-  listEl.innerHTML = entries.map(({ id, item, virtual }) => {
+  lastListEntries = entries;
+  listEl.innerHTML = entries.map(({ id, item, virtual }, idx) => {
     const result = virtual ? '' : itemInspectionResult(item);
     const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
       : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
@@ -1177,12 +1272,16 @@ function renderList() {
         ${virtual ? `<div class="item-scanned">Linked in: ${escapeHtml(virtual.via)}</div>` : `<div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>`}
       </div>
       <div class="item-actions">
+        ${piecesMode ? `<button class="pieceBtn" data-idx="${idx}">🏷️ Tag</button>` : ''}
         <button class="viewBtn" data-id="${escapeAttr(id)}">View</button>
         <button class="editBtn" data-id="${escapeAttr(id)}">Edit</button>
       </div>
     </div>
   `; }).join('');
 
+  listEl.querySelectorAll('.pieceBtn').forEach(btn => {
+    btn.addEventListener('click', () => openPiece(lastListEntries[Number(btn.dataset.idx)]));
+  });
   listEl.querySelectorAll('.editBtn').forEach(btn => {
     btn.addEventListener('click', () => openModal(btn.dataset.id));
   });
@@ -1682,6 +1781,11 @@ document.getElementById('deleteItemBtn').addEventListener('click', () => {
 document.getElementById('searchInput').addEventListener('input', renderList);
 document.getElementById('typeFilter').addEventListener('change', renderList);
 document.getElementById('viewMode').addEventListener('change', renderList);
+document.getElementById('pieceCloseBtn').addEventListener('click', closePiece);
+document.getElementById('pieceSaveBtn').addEventListener('click', () => { if (savePieceEdits()) { showToast('Saved'); closePiece(); } });
+document.getElementById('pieceOpenParentBtn').addEventListener('click', () => {
+  const id = pieceCtx && pieceCtx.entry.id; closePiece(); if (id) openView(id);
+});
 document.getElementById('unitFilter').addEventListener('change', renderList);
 
 // ---------- XLSX export (matches the original per-Unit workbook layout) ----------
@@ -3374,6 +3478,7 @@ async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
       const dateInput = document.getElementById(dateTargetId);
       if (dateInput) { dateInput.value = dateValue; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     }
+    if (targetInputId === 'pieceIdInput') savePieceEdits();
     showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + (sizeValue ? ' + size ' + sizeValue : '') + ' to tag');
   } catch (err) {
     clearTimeout(timeoutId);
@@ -3427,6 +3532,7 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
     clearTimeout(timeoutId);
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
     if (dateInput) { dateInput.value = trimmedDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (targetInputId === 'pieceIdInput') savePieceEdits();
     showToast('Updated date to ' + trimmedDate + ' (ID "' + currentId + '" unchanged)');
   } catch (err) {
     clearTimeout(timeoutId);
