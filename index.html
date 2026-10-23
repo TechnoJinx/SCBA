@@ -220,9 +220,14 @@
   <button type="button" class="scanner-cancel" id="scannerCancelBtn">Cancel</button>
 </div>
 
+<div id="archiveEditBanner" style="display:none;position:sticky;top:0;z-index:60;background:#7c3aed;color:#fff;padding:10px 14px;font-size:14px;align-items:center;justify-content:space-between;gap:10px;">
+  <span id="archiveEditText"></span>
+  <button id="archiveEditDoneBtn" style="background:#fff;color:#4c1d95;padding:6px 12px;border-radius:8px;border:0;font-weight:600;">Done</button>
+</div>
 <header>
   <h1>🦺 Safety Equipment Tracker</h1>
   <p id="itemCount">0 items tracked</p>
+  <button type="button" id="monthProgressBtn" class="manual-link" style="margin:2px auto 0;display:block;"></button>
 </header>
 
 <div class="status-banner" id="statusBanner"></div>
@@ -251,6 +256,11 @@
 
 <div class="toolbar">
   <input type="text" id="searchInput" placeholder="Search...">
+  <select id="todoFilter" title="This month's checklist">
+    <option value="">All items</option>
+    <option value="todo">⏳ Needs completing</option>
+    <option value="done">✅ Completed</option>
+  </select>
   <select id="viewMode" title="What to list">
     <option value="points">📍 Collection points</option>
     <option value="pieces">🔧 Equipment pieces (frames, cylinders, masks)</option>
@@ -702,6 +712,39 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="newMonthOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>Start a new inspection month</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">
+      This month's results are saved first (an XLSX downloads and a copy goes under Previous Months — you can reopen and edit it later).
+    </p>
+    <label style="display:block;margin:10px 0;"><input type="checkbox" id="nmClearEquipment" checked>
+      Clear SCBAs, Cylinders, Masks and SARs from every collection point, so they get scanned in again this month</label>
+    <strong>What needs to be completed this month?</strong>
+    <div id="nmTypes" style="display:flex;flex-direction:column;gap:6px;margin:6px 0 10px;"></div>
+    <p style="color:var(--text-dim);font-size:12px;">Inspection results and comments are always cleared. Locations, history, and the calibration list are kept.</p>
+    <div class="modal-buttons">
+      <button id="nmCancelBtn" style="background:#334155;color:var(--text);">Cancel</button>
+      <button id="nmStartBtn">Start new month</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="monthProgressOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2 id="mpTitle">This month</h2>
+    <div id="mpBar" style="height:10px;background:#334155;border-radius:6px;overflow:hidden;margin:4px 0 6px;"><div id="mpBarFill" style="height:100%;width:0;background:#4ade80;"></div></div>
+    <p id="mpSummary" style="font-size:14px;margin:0 0 10px;"></p>
+    <strong>Required this month</strong> <span style="color:var(--text-dim);font-size:12px;">(tick what needs completing; tap a row to see what's left)</span>
+    <div id="mpTypes" style="margin:6px 0 12px;"></div>
+    <strong>By area</strong>
+    <div id="mpUnits" style="margin:6px 0 6px;"></div>
+    <div class="modal-buttons">
+      <button id="mpCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="previousMonthsOverlay">
   <div class="modal">
     <h2>Previous Months</h2>
@@ -807,6 +850,7 @@ async function loadItems() {
 // Hooks the optional cloud sync (cloud-sync.js) attaches to; stay null when sync is off.
 window.__scbaCloud = { onItemsSaved: null, onHistorySaved: null };
 function saveItems() {
+  if (archiveEdit) { persistArchiveEdit(); return; }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   if (window.__scbaCloud.onItemsSaved) window.__scbaCloud.onItemsSaved();
 }
@@ -829,6 +873,7 @@ function loadComponentHistory() {
   catch (e) { componentHistory = {}; }
 }
 function saveComponentHistory() {
+  if (archiveEdit) return;
   localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory));
   if (window.__scbaCloud.onHistorySaved) window.__scbaCloud.onHistorySaved();
 }
@@ -861,11 +906,11 @@ function openArchiveDB() {
     req.onerror = () => reject(req.error);
   });
 }
-async function saveMonthlyArchive(label, itemsSnapshot) {
+async function saveMonthlyArchive(label, itemsSnapshot, plan) {
   const db = await openArchiveDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('months', 'readwrite');
-    tx.objectStore('months').put({ id: Date.now(), label, timestamp: Date.now(), items: itemsSnapshot });
+    tx.objectStore('months').put({ id: Date.now(), label, timestamp: Date.now(), items: itemsSnapshot, plan: plan || null });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -886,6 +931,15 @@ async function getMonthlyArchive(id) {
     const req = tx.objectStore('months').get(id);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+  });
+}
+async function putMonthlyArchive(rec) {
+  const db = await openArchiveDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('months', 'readwrite');
+    tx.objectStore('months').put(rec);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 async function deleteMonthlyArchive(id) {
@@ -969,6 +1023,98 @@ function itemDisplayName(item, id) {
   if (item.type === 'SCBA Mask') return (item.stdMaskSize ? item.stdMaskSize + ' Mask ' : 'Mask ') + (item.stdMaskId || id);
   return id;
 }
+// ---------- This month's checklist ----------
+const MONTH_PLAN_KEY = 'safety_tracker_month_plan_v1';
+const PLAN_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station'];
+function defaultMonthLabel() { return new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
+function loadMonthPlan() {
+  try {
+    const p = JSON.parse(localStorage.getItem(MONTH_PLAN_KEY) || 'null');
+    if (p && Array.isArray(p.types)) return p;
+  } catch (e) { /* ignore */ }
+  return { label: defaultMonthLabel(), startedAt: null, types: PLAN_TYPES.slice() };
+}
+let monthPlan = loadMonthPlan();
+function saveMonthPlan() { try { localStorage.setItem(MONTH_PLAN_KEY, JSON.stringify(monthPlan)); } catch (e) { /* ignore */ } }
+function activePlan() { return (archiveEdit && archiveEdit.plan) ? archiveEdit.plan : monthPlan; }
+
+// What's still missing on a record for this month. Empty list = done.
+function monthMissing(item) {
+  const m = [];
+  if (!itemInspectionResult(item)) m.push('Inspection');
+  if (item.type === 'SCBA Station') {
+    if (!item.scbaFrameId) m.push('Frame');
+    if (!item.scbaCylinderId) m.push('Cylinder');
+    if (!(item.scbaLMaskId || item.scbaMMaskId || item.scbaSMaskId)) m.push('Mask');
+  } else if (item.type === 'Mask Cabinet') {
+    if (!(item.masks || []).some(x => x.id)) m.push('Masks');
+  } else if (item.type === 'SAR') {
+    if (!item.sarId) m.push('SAR tag');
+  }
+  return m;
+}
+function isPlanned(item) { return activePlan().types.includes(item.type); }
+
+function monthStats() {
+  const plan = activePlan();
+  const byType = {}, byUnit = {};
+  let total = 0, done = 0;
+  Object.values(items).forEach(it => {
+    if (!plan.types.includes(it.type)) return;
+    const ok = monthMissing(it).length === 0;
+    total++; if (ok) done++;
+    (byType[it.type] ||= { total: 0, done: 0 }).total++; if (ok) byType[it.type].done++;
+    const u = it.unit || '(No unit)';
+    (byUnit[u] ||= { total: 0, done: 0 }).total++; if (ok) byUnit[u].done++;
+  });
+  return { total, done, byType, byUnit };
+}
+
+// ---- Reopening a previous month to edit it ----
+// While editing, `items` temporarily holds that month's records. Live data stays untouched in
+// localStorage (and keeps syncing under the hood); saves go to the archive instead.
+let archiveEdit = null;   // { rec, label, plan, live, liveHist }
+let archiveSaveTimer = null;
+function persistArchiveEdit() {
+  if (!archiveEdit) return;
+  archiveEdit.rec.items = JSON.parse(JSON.stringify(items));
+  clearTimeout(archiveSaveTimer);
+  archiveSaveTimer = setTimeout(() => {
+    putMonthlyArchive(archiveEdit ? archiveEdit.rec : null).catch(() => showToast('Could not save changes to that month'));
+  }, 300);
+}
+function updateArchiveBanner() {
+  const b = document.getElementById('archiveEditBanner');
+  if (archiveEdit) {
+    document.getElementById('archiveEditText').textContent = '✏️ Editing past month: ' + archiveEdit.label + ' — changes save to that month, not the current one.';
+    b.style.display = 'flex';
+  } else b.style.display = 'none';
+}
+async function startArchiveEdit(id) {
+  if (archiveEdit) { showToast('Finish the month you are editing first'); return; }
+  const rec = await getMonthlyArchive(id);
+  if (!rec) { showToast('Could not open that month'); return; }
+  archiveEdit = { rec, label: rec.label, plan: rec.plan || null,
+    live: items, liveHist: componentHistory };
+  items = JSON.parse(JSON.stringify(rec.items));
+  componentHistory = JSON.parse(JSON.stringify(componentHistory));
+  updateArchiveBanner();
+  populateFilters(); renderList(); updateMonthProgress();
+  showToast('Editing ' + rec.label);
+}
+async function finishArchiveEdit() {
+  if (!archiveEdit) return;
+  clearTimeout(archiveSaveTimer);
+  archiveEdit.rec.items = JSON.parse(JSON.stringify(items));
+  try { await putMonthlyArchive(archiveEdit.rec); } catch (e) { showToast('Could not save changes to that month'); return; }
+  items = archiveEdit.live;
+  componentHistory = archiveEdit.liveHist;
+  archiveEdit = null;
+  updateArchiveBanner();
+  populateFilters(); renderList(); updateMonthProgress();
+  showToast('Back to the current month');
+}
+
 function itemInspectionResult(item) {
   if (item.type === 'Extinguisher') return item.extInspection || '';
   if (item.type === 'Emergency Light') return item.lightInspection || '';
@@ -1216,7 +1362,14 @@ function renderList() {
   const piecesMode = document.getElementById('viewMode').value === 'pieces';
   const pieceTypes = piecesMode ? (PIECE_TYPES.includes(typeFilterVal) ? [typeFilterVal] : (typeFilterVal ? [] : PIECE_TYPES)) : [];
 
+  const todoVal = piecesMode ? '' : document.getElementById('todoFilter').value;
   const realEntries = Object.entries(items).filter(([id, item]) => {
+    if (todoVal) {
+      if (!isPlanned(item)) return false;
+      const left = monthMissing(item).length;
+      if (todoVal === 'todo' && !left) return false;
+      if (todoVal === 'done' && left) return false;
+    }
     if (piecesMode) {
       // Equipment-pieces view: only individually tracked pieces (standalone Frame/Cylinder/Mask records)
       if (!pieceTypes.includes(item.type)) return false;
@@ -1250,6 +1403,7 @@ function renderList() {
   }
 
   lastListEntries = entries;
+  updateMonthProgress();
   listEl.innerHTML = entries.map(({ id, item, virtual }, idx) => {
     const result = virtual ? '' : itemInspectionResult(item);
     const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
@@ -1258,6 +1412,12 @@ function renderList() {
     const summary = virtual ? virtual.summary : itemSummaryLine(item);
     const typeLabel = virtual ? (virtual.vtype || typeFilterVal) : item.type;
     const unitLabel = virtual ? virtual.unit : item.unit;
+    let todoBadge = '';
+    if (!virtual && !piecesMode && isPlanned(item)) {
+      const left = monthMissing(item);
+      todoBadge = left.length ? `<span class="badge" style="background:#92400e;color:#fde68a;">⏳ Needs: ${escapeHtml(left.join(', '))}</span>`
+                              : '<span class="badge" style="background:#14532d;color:#bbf7d0;">✓ Done</span>';
+    }
     return `
     <div class="item-card" data-id="${escapeAttr(id)}">
       <div class="item-info">
@@ -1268,6 +1428,7 @@ function renderList() {
           ${unitLabel ? `<span class="badge badge-unit">${escapeHtml(unitLabel)}</span>` : ''}
           ${id.startsWith('UNASSIGNED-') ? '<span class="badge" style="background:#7c3aed;color:#fff;">No location</span>' : ''}
           ${resultBadge}
+          ${todoBadge}
         </div>
         ${virtual ? `<div class="item-scanned">Linked in: ${escapeHtml(virtual.via)}</div>` : `<div class="item-scanned">${item.updatedAt ? 'Last scanned ' + timeAgo(item.updatedAt) : ''}</div>`}
       </div>
@@ -1781,6 +1942,7 @@ document.getElementById('deleteItemBtn').addEventListener('click', () => {
 document.getElementById('searchInput').addEventListener('input', renderList);
 document.getElementById('typeFilter').addEventListener('change', renderList);
 document.getElementById('viewMode').addEventListener('change', renderList);
+document.getElementById('todoFilter').addEventListener('change', renderList);
 document.getElementById('pieceCloseBtn').addEventListener('click', closePiece);
 document.getElementById('pieceSaveBtn').addEventListener('click', () => { if (savePieceEdits()) { showToast('Saved'); closePiece(); } });
 document.getElementById('pieceOpenParentBtn').addEventListener('click', () => {
@@ -2141,16 +2303,17 @@ let cloud = null;
 let cloudState = 'off';
 let renderTimer = null;
 const cloudBridge = {
-  getItems: () => items,
-  getHistory: () => componentHistory,
+  getItems: () => archiveEdit ? archiveEdit.live : items,
+  getHistory: () => archiveEdit ? archiveEdit.liveHist : componentHistory,
   toast: (m) => showToast(m),
   confirm: (m) => confirm(m),
   applyItems(upserts, removals) {
     let n = 0;
-    Object.entries(upserts || {}).forEach(([id, it]) => { items[id] = it; n++; });
-    (removals || []).forEach((id) => { if (id in items) { delete items[id]; n++; } });
+    const target = archiveEdit ? archiveEdit.live : items;
+    Object.entries(upserts || {}).forEach(([id, it]) => { target[id] = it; n++; });
+    (removals || []).forEach((id) => { if (id in target) { delete target[id]; n++; } });
     if (n) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch (e) { /* quota */ }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(target)); } catch (e) { /* quota */ }
       clearTimeout(renderTimer);
       renderTimer = setTimeout(() => { populateFilters(); renderList(); }, 150);
     }
@@ -2158,16 +2321,17 @@ const cloudBridge = {
   },
   mergeHistory(incoming) {
     let changed = false;
+    const hist = archiveEdit ? archiveEdit.liveHist : componentHistory;
     Object.entries(incoming || {}).forEach(([key, entries]) => {
       const seen = new Map();
-      [...(componentHistory[key] || []), ...entries].forEach((e) => {
+      [...(hist[key] || []), ...entries].forEach((e) => {
         const k = e.collectionPointId + '|' + e.role + '|' + e.timestamp;
         if (!seen.has(k)) seen.set(k, e);
       });
       const merged = Array.from(seen.values()).sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
-      if (merged.length !== (componentHistory[key] || []).length) { componentHistory[key] = merged; changed = true; }
+      if (merged.length !== (hist[key] || []).length) { hist[key] = merged; changed = true; }
     });
-    if (changed) { try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); } catch (e) { /* quota */ } }
+    if (changed) { try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(hist)); } catch (e) { /* quota */ } }
   }
 };
 
@@ -2790,35 +2954,50 @@ const MONTHLY_RESET_FIELDS = {
   'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments']
 };
 
-document.getElementById('startNewMonthLink').addEventListener('click', async () => {
+// Equipment that gets cleared from collection points at the start of a month, so it can be scanned in again.
+function clearEquipmentFields(item) {
+  if (item.type === 'SCBA Station') {
+    ['scbaFrameId', 'scbaLastCalibration', 'scbaFrameSerialNumber',
+     'scbaCylinderId', 'scbaLastHydro', 'scbaPressure', 'scbaCylinderSerialNumber', 'scbaCylinderManufacturedDate',
+     'scbaLMaskId', 'scbaLMaskExpDate', 'scbaMMaskId', 'scbaMMaskExpDate', 'scbaSMaskId', 'scbaSMaskExpDate']
+      .forEach(f => { if (f in item) item[f] = ''; });
+  } else if (item.type === 'Mask Cabinet') {
+    item.masks = [];
+    item.maskCabSarNumber = '';
+  } else if (item.type === 'SAR') {
+    item.sarId = '';
+  }
+}
+
+document.getElementById('startNewMonthLink').addEventListener('click', () => {
+  if (archiveEdit) { showToast('Finish editing the past month first (tap Done at the top)'); return; }
   const count = Object.values(items).filter(i => MONTHLY_RESET_FIELDS[i.type]).length;
   if (!count) { showToast('No inspectable equipment to reset yet'); return; }
-
-  const proceed = confirm(
-    'Start a new inspection month for ' + count + ' item(s)?\n\n' +
-    'This will:\n' +
-    '1) Download an XLSX backup of this month\'s results\n' +
-    '2) Save a snapshot of this month in the app itself, under "Previous Months" — ' +
-    'you can come back and re-download its XLSX anytime, even later\n' +
-    '3) Save each item\'s current Pass/Fail status into its own history\n' +
-    '4) Clear Inspection / Last Inspected / Comments so you can re-inspect fresh\n\n' +
-    'Equipment links (Frame/Cylinder/Mask RFID), calibration/hydro dates, and locations ' +
-    'are NOT touched. This cannot be undone. Continue?'
-  );
-  if (!proceed) return;
+  document.getElementById('nmTypes').innerHTML = PLAN_TYPES.map(t =>
+    `<label><input type="checkbox" data-nm="type" value="${escapeAttr(t)}" ${monthPlan.types.includes(t) ? 'checked' : ''}> ${escapeHtml(t)}</label>`).join('');
+  document.getElementById('newMonthOverlay').classList.add('show');
+});
+document.getElementById('nmCancelBtn').addEventListener('click', () => {
+  document.getElementById('newMonthOverlay').classList.remove('show');
+});
+document.getElementById('nmStartBtn').addEventListener('click', async () => {
+  const clearEquip = document.getElementById('nmClearEquipment').checked;
+  const types = Array.from(document.querySelectorAll('#nmTypes input:checked')).map(el => el.value);
+  if (!types.length) { showToast('Pick at least one thing that needs completing'); return; }
+  document.getElementById('newMonthOverlay').classList.remove('show');
 
   document.getElementById('exportXlsxBtn').click();
   await new Promise(r => setTimeout(r, 400));
 
-  const archiveLabel = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const archiveLabel = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) + ' (' + monthPlan.label + ')';
   try {
-    await saveMonthlyArchive(archiveLabel, JSON.parse(JSON.stringify(items)));
+    await saveMonthlyArchive(archiveLabel, JSON.parse(JSON.stringify(items)), JSON.parse(JSON.stringify(monthPlan)));
   } catch (e) {
     showToast('Note: could not save an in-app archive of this month (XLSX download still happened)');
   }
 
   const now = Date.now();
-  let resetCount = 0;
+  let resetCount = 0, clearedCount = 0;
   Object.entries(items).forEach(([id, item]) => {
     const fields = MONTHLY_RESET_FIELDS[item.type];
     if (!fields) return;
@@ -2832,13 +3011,81 @@ document.getElementById('startNewMonthLink').addEventListener('click', async () 
     });
     const updated = { ...item, history, updatedAt: now };
     fields.forEach(f => { updated[f] = ''; });
+    if (clearEquip && ['SCBA Station', 'Mask Cabinet', 'SAR'].includes(item.type)) {
+      if (equipmentSnapshot(item).length || (item.type === 'SAR' && item.sarId)) clearedCount++;
+      clearEquipmentFields(updated);
+    }
     items[id] = updated;
     resetCount++;
   });
+  monthPlan = { label: defaultMonthLabel(), startedAt: now, types };
+  saveMonthPlan();
   saveItems();
   renderList();
-  showToast('New month started — ' + resetCount + ' item(s) reset, full history preserved');
+  showToast('New month started — ' + resetCount + ' item(s) reset' + (clearEquip ? ', equipment cleared at ' + clearedCount + ' location(s)' : '') + '. History kept.');
 });
+
+// ---------- Month progress overlay ----------
+function updateMonthProgress() {
+  const btn = document.getElementById('monthProgressBtn');
+  if (!btn) return;
+  const st = monthStats();
+  const plan = activePlan();
+  const pct = st.total ? Math.round(st.done * 100 / st.total) : 0;
+  btn.textContent = '📋 ' + plan.label + ': ' + st.done + ' of ' + st.total + ' completed (' + pct + '%)';
+  btn.style.color = st.total && st.done === st.total ? '#4ade80' : '';
+  if (document.getElementById('monthProgressOverlay').classList.contains('show')) renderMonthProgress();
+}
+function renderMonthProgress() {
+  const plan = activePlan();
+  const st = monthStats();
+  document.getElementById('mpTitle').textContent = '📋 ' + plan.label + (archiveEdit ? ' (past month)' : '');
+  document.getElementById('mpBarFill').style.width = (st.total ? st.done * 100 / st.total : 0) + '%';
+  document.getElementById('mpSummary').textContent = st.total
+    ? st.done + ' of ' + st.total + ' completed — ' + (st.total - st.done) + ' left'
+    : 'Nothing is marked as required yet.';
+  const row = (label, s, attrs, checkbox) => `
+    <div class="history-row mpRow" ${attrs} style="align-items:center;cursor:pointer;">
+      <span class="hist-loc">${checkbox || ''}${escapeHtml(label)}</span>
+      <span style="color:${s && s.total && s.done === s.total ? '#4ade80' : 'var(--text-dim)'};">${s ? s.done + ' / ' + s.total : '—'}</span>
+    </div>`;
+  document.getElementById('mpTypes').innerHTML = PLAN_TYPES.map(t => {
+    const checked = plan.types.includes(t);
+    return row(t, checked ? (st.byType[t] || { done: 0, total: 0 }) : null, `data-type="${escapeAttr(t)}"`,
+      `<input type="checkbox" class="mpTypeChk" data-type="${escapeAttr(t)}" ${checked ? 'checked' : ''} ${archiveEdit ? 'disabled' : ''}> `);
+  }).join('');
+  document.getElementById('mpUnits').innerHTML = Object.keys(st.byUnit).sort().map(u =>
+    row(u, st.byUnit[u], `data-unit="${escapeAttr(u)}"`)).join('') || '<div class="empty-state" style="padding:8px 0;">—</div>';
+}
+document.getElementById('monthProgressBtn').addEventListener('click', () => {
+  renderMonthProgress();
+  document.getElementById('monthProgressOverlay').classList.add('show');
+});
+document.getElementById('mpCloseBtn').addEventListener('click', () => {
+  document.getElementById('monthProgressOverlay').classList.remove('show');
+});
+document.getElementById('monthProgressOverlay').addEventListener('click', (e) => {
+  const chk = e.target.closest('.mpTypeChk');
+  if (chk) {
+    const t = chk.dataset.type;
+    const set = new Set(monthPlan.types);
+    chk.checked ? set.add(t) : set.delete(t);
+    monthPlan.types = PLAN_TYPES.filter(x => set.has(x));
+    saveMonthPlan();
+    renderList();
+    return;
+  }
+  const row = e.target.closest('.mpRow');
+  if (!row) return;
+  // Tap a row: jump to the list showing only what's left for that type / area
+  document.getElementById('typeFilter').value = row.dataset.type || '';
+  document.getElementById('unitFilter').value = row.dataset.unit && row.dataset.unit !== '(No unit)' ? row.dataset.unit : '';
+  document.getElementById('todoFilter').value = 'todo';
+  document.getElementById('viewMode').value = 'points';
+  document.getElementById('monthProgressOverlay').classList.remove('show');
+  renderList();
+});
+document.getElementById('archiveEditDoneBtn').addEventListener('click', finishArchiveEdit);
 
 // ---------- Previous Months overlay ----------
 async function renderPreviousMonthsList() {
@@ -2859,6 +3106,7 @@ async function renderPreviousMonthsList() {
     <div class="history-row" data-archive-id="${a.id}" style="align-items:center;">
       <span class="hist-loc">${escapeHtml(a.label)} <span style="color:var(--text-dim);font-weight:400;">(${Object.keys(a.items).length} items)</span></span>
       <div style="display:flex;gap:8px;">
+        <button class="archiveEditBtn" data-archive-id="${a.id}" style="padding:6px 12px;font-size:13px;background:#7c3aed;color:#fff;">✏️ Reopen</button>
         <button class="archiveDownloadBtn" data-archive-id="${a.id}" style="padding:6px 12px;font-size:13px;">Download XLSX</button>
         <button class="archiveDeleteBtn" data-archive-id="${a.id}" style="padding:6px 10px;font-size:13px;background:#7f1d1d;color:#fecaca;">✕</button>
       </div>
@@ -2874,6 +3122,12 @@ document.getElementById('previousMonthsCloseBtn').addEventListener('click', () =
   document.getElementById('previousMonthsOverlay').classList.remove('show');
 });
 document.getElementById('previousMonthsList').addEventListener('click', async (e) => {
+  const editBtn = e.target.closest('.archiveEditBtn');
+  if (editBtn) {
+    document.getElementById('previousMonthsOverlay').classList.remove('show');
+    try { await startArchiveEdit(Number(editBtn.dataset.archiveId)); } catch (err) { showToast('Could not open that month'); }
+    return;
+  }
   const dlBtn = e.target.closest('.archiveDownloadBtn');
   if (dlBtn) {
     const id = Number(dlBtn.dataset.archiveId);
