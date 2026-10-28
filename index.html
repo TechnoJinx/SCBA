@@ -3470,22 +3470,43 @@ async function btWriteTextRecords(texts) {
   if (btBusy) throw new Error('Reader is busy — try again');
   btBusy = true;
   try {
-    await btWaitForCard(10000);
+    await btWaitForCard(15000);
     await btReader.powerOn();
-    const cc = await btReader.readBinary(3, 4);
-    if (cc[0] !== 0xe1) throw new Error('Tag isn\'t an NFC Forum Type 2 tag (NTAG/Ultralight) — can\'t write it with this reader');
+    // Work out the tag type: NFC Forum Type 2 (NTAG/Ultralight, CC on page 3) or Type 5 (ISO 15693, CC in block 0).
+    let startAddr = 0, capacity = 0, kind = '';
+    try {
+      const cc = await btReader.readBinary(3, 4);
+      if (cc[0] === 0xe1) { kind = 'Type 2'; startAddr = 4; capacity = cc[2] * 8; }
+    } catch (e) { /* not a Type 2 tag */ }
+    if (!kind) {
+      try {
+        const b0 = await btReader.readBinary(0, 4);
+        if (b0[0] === 0xe1 || b0[0] === 0xe2) {
+          kind = 'Type 5';
+          if (b0[2] === 0) {                                  // 8-byte CC: size in the next block
+            const b1 = await btReader.readBinary(1, 4);
+            capacity = ((b1[2] << 8) | b1[3]) * 8; startAddr = 2;
+          } else { capacity = b0[2] * 8; startAddr = 1; }
+        }
+      } catch (e) { /* not a Type 5 tag either */ }
+    }
+    if (!kind) throw new Error('Tag isn\'t a formatted NFC tag this reader can write (needs an NFC Forum Type 2 or Type 5 tag with a capability container)');
     const data = btBuildTextNdefTlv(texts);
-    const capacity = cc[2] * 8;
     if (capacity && data.length > capacity) throw new Error('Tag too small (' + capacity + ' bytes) for this data');
+    showToast('Writing ' + kind + ' tag… keep it on the reader');
     for (let i = 0; i < data.length; i += 4) {
-      const r = await btReader.transmit(Uint8Array.of(0xff, 0xd6, 0x00, 4 + i / 4, 4, data[i], data[i + 1], data[i + 2], data[i + 3]));
-      if (r.length < 2 || r[r.length - 2] !== 0x90 || r[r.length - 1] !== 0x00) throw new Error('Reader refused the write at page ' + (4 + i / 4));
+      const addr = startAddr + i / 4;
+      const r = await btReader.transmit(Uint8Array.of(0xff, 0xd6, 0x00, addr, 4, data[i], data[i + 1], data[i + 2], data[i + 3]));
+      const sw = r.length >= 2 ? ((r[r.length - 2] << 8) | r[r.length - 1]) : 0;
+      if (sw !== 0x9000) throw new Error('Reader refused the write at block ' + addr + ' (status ' + sw.toString(16).toUpperCase() + ') — tag may be locked or read-only');
     }
     // Read it back to confirm it really took
     const back = await btReader.readTag();
     const want = texts.map(t => (t || '').trim());
     const got = back.texts || [];
-    if (want.some((t, i) => (got[i] || '') !== t)) throw new Error('Written data did not read back correctly — tag may be locked');
+    if (want.some((t, i) => (got[i] || '') !== t)) {
+      throw new Error('Wrote "' + want.join(' | ') + '" but read back "' + got.join(' | ') + '" — keep the tag still on the reader and try again');
+    }
   } finally {
     btBusy = false;
   }
@@ -3637,7 +3658,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
   let done = false;
   const timeoutId = setTimeout(() => {
     if (!done) { done = true; btOnce = null; showToast('NFC scan timed out — try again'); }
-  }, 10000);
+  }, btReaderReady() ? 30000 : 10000);
   try {
     const onFieldReading = (event) => {
       if (done) return;
@@ -3718,7 +3739,7 @@ async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
   let done = false;
   const timeoutId = setTimeout(() => {
     if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
-  }, 10000);
+  }, btReaderReady() ? 45000 : 10000);
   try {
     const records = [{ recordType: 'text', data: trimmed }];
     if (dateValue || sizeValue) records.push({ recordType: 'text', data: dateValue });
@@ -3777,7 +3798,7 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
   let done = false;
   const timeoutId = setTimeout(() => {
     if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
-  }, 10000);
+  }, btReaderReady() ? 45000 : 10000);
   try {
     const records = [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }];
     if (sizeValue) records.push({ recordType: 'text', data: sizeValue });
