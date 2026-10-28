@@ -245,6 +245,7 @@
   <button type="button" class="manual-link" id="previousMonthsLink">📁 Previous months</button>
   <button type="button" class="manual-link" id="downloadByTypeLink">📦 Download by equipment type (SCBAs, Cylinders, Frames…)</button>
   <button type="button" class="manual-link" id="cloudLink">☁️ Cloud sync</button>
+  <button type="button" class="manual-link" id="tagLogLink">📝 Tag activity log (writes, reads &amp; errors)</button>
   <button type="button" class="manual-link" id="btReaderLink">🔵 Connect Bluetooth NFC reader (ACR1555U)</button>
   <button type="button" class="manual-link" id="customReportLink">📊 Build a custom Excel report (pick areas &amp; equipment)</button>
   <button type="button" class="manual-link" id="uploadCalibrationLink">📤 Update calibration list from Excel</button>
@@ -711,6 +712,22 @@
     <div id="downloadByTypeList" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;"></div>
     <div class="modal-buttons">
       <button id="downloadByTypeCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="tagLogOverlay">
+  <div class="modal" style="max-height:90vh;overflow-y:auto;">
+    <h2>📝 Tag activity</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin-top:-8px;">Newest first. Kept on this device (last 300).</p>
+    <div style="display:flex;gap:8px;margin:6px 0;">
+      <select id="tagLogFilter" style="flex:1;"><option value="">Everything</option><option value="fail">Errors only</option><option value="write">Writes only</option></select>
+    </div>
+    <div id="tagLogList" style="margin:6px 0;"></div>
+    <div class="modal-buttons" style="flex-wrap:wrap;">
+      <button id="tagLogCloseBtn" style="background:#334155;color:var(--text);">Close</button>
+      <button id="tagLogExportBtn" style="background:#334155;color:var(--text);">Download CSV</button>
+      <button id="tagLogClearBtn" style="background:#7f1d1d;color:#fecaca;">Clear</button>
     </div>
   </div>
 </div>
@@ -2294,6 +2311,45 @@ document.getElementById('downloadByTypeCloseBtn').addEventListener('click', () =
   document.getElementById('downloadByTypeOverlay').classList.remove('show');
 });
 
+function renderTagLog() {
+  const f = document.getElementById('tagLogFilter').value;
+  let log = loadTagLog().slice().reverse();
+  if (f === 'fail') log = log.filter(e => !e.ok);
+  if (f === 'write') log = log.filter(e => e.action !== 'Read');
+  const el = document.getElementById('tagLogList');
+  if (!log.length) { el.innerHTML = '<div class="empty-state" style="padding:12px 0;">Nothing logged yet.</div>'; return; }
+  el.innerHTML = log.map(e => {
+    const when = new Date(e.t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    return `<div class="history-row" style="display:block;border-left:4px solid ${e.ok ? '#4ade80' : '#f87171'};padding-left:10px;margin-bottom:8px;">
+      <div><strong>${e.ok ? '✅' : '❌'} ${escapeHtml(e.action)}${e.id ? ' · ' + escapeHtml(e.id) : ''}</strong></div>
+      <div style="color:var(--text-dim);font-size:12px;">${escapeHtml(when)} · ${escapeHtml(e.method || '')}</div>
+      ${e.detail ? `<div style="font-size:13px;">${escapeHtml(e.detail)}</div>` : ''}
+      ${e.error ? `<div style="font-size:13px;color:#fca5a5;">${escapeHtml(e.error)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+document.getElementById('tagLogLink').addEventListener('click', () => {
+  renderTagLog();
+  document.getElementById('tagLogOverlay').classList.add('show');
+});
+document.getElementById('tagLogFilter').addEventListener('change', renderTagLog);
+document.getElementById('tagLogCloseBtn').addEventListener('click', () => document.getElementById('tagLogOverlay').classList.remove('show'));
+document.getElementById('tagLogClearBtn').addEventListener('click', () => {
+  if (!confirm('Clear the tag activity log?')) return;
+  try { localStorage.removeItem(TAG_LOG_KEY); } catch (e) { /* ignore */ }
+  renderTagLog();
+});
+document.getElementById('tagLogExportBtn').addEventListener('click', () => {
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = [['Time', 'Action', 'Result', 'ID', 'Method', 'Detail', 'Error'].map(q).join(',')];
+  loadTagLog().forEach(e => rows.push([new Date(e.t).toISOString(), e.action, e.ok ? 'OK' : 'FAILED', e.id, e.method, e.detail, e.error].map(q).join(',')));
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'tag_activity_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+});
+
 // ---------- Cloud sync (optional; Firebase via cloud-sync.js) ----------
 // Firebase web config (public identifiers, not secrets — access is controlled by the Firestore rules).
 const FIREBASE_CONFIG = {
@@ -3394,6 +3450,21 @@ document.getElementById('historyLookupNfcBtn').addEventListener('click', () => {
   scanNfcIntoField('historyLookupInput');
 });
 
+// ---------- Tag activity log (what was read/written, and any errors) ----------
+const TAG_LOG_KEY = 'safety_tracker_tag_log_v1';
+const TAG_LOG_MAX = 300;
+function loadTagLog() {
+  try { return JSON.parse(localStorage.getItem(TAG_LOG_KEY) || '[]'); } catch (e) { return []; }
+}
+// entry: { action: 'Write'|'Date update'|'Read', id, detail, ok, error }
+function logTagEvent(entry) {
+  try {
+    const log = loadTagLog();
+    log.push({ t: Date.now(), method: (typeof btReaderReady === 'function' && btReaderReady()) ? 'Bluetooth reader' : 'Phone NFC', ...entry });
+    localStorage.setItem(TAG_LOG_KEY, JSON.stringify(log.slice(-TAG_LOG_MAX)));
+  } catch (e) { /* logging must never break scanning */ }
+}
+
 // ---------- Bluetooth NFC reader (ACS ACR1555U) via acr1555u.js ----------
 // The driver is an ES module that lives next to index.html. It's loaded on demand so the app
 // still works if the file is missing. It reads tags and feeds them through the same handlers
@@ -3425,7 +3496,7 @@ async function btTryReadNow() {
     else if (btEntryHandler) { btEntryHandler(ev); }
   } catch (err) {
     // No card yet is normal — the cardpresent event will trigger another attempt.
-    if (!/No card present|ICC mute/i.test(err && err.message || '')) showToast('Reader: ' + (err && err.message || 'read failed'));
+    if (!/No card present|ICC mute/i.test(err && err.message || '')) { showToast('Reader: ' + (err && err.message || 'read failed')); logTagEvent({ action: 'Read', id: '', ok: false, error: (err && err.message) || 'read failed' }); }
   }
   btBusy = false;
 }
@@ -3572,8 +3643,9 @@ async function startNfcEntryScanning() {
       if (!nfcEntryScanning) return;
       const writtenId = readTextRecord(event.message);
       const value = writtenId || event.serialNumber;
-      if (!value) { showToast('Tag has no readable ID'); return; }
+      if (!value) { showToast('Tag has no readable ID'); logTagEvent({ action: 'Read', id: '', ok: false, error: 'Tag has no readable ID' }); return; }
       flashNfcSuccess();
+      logTagEvent({ action: 'Read', id: value, ok: true, detail: writtenId ? '' : 'no ID on tag — used serial' });
       stopNfcEntryScanning();
       const matchId = findMatchingId(value);
       if (matchId && matchId !== value) {
@@ -3657,7 +3729,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
   showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader…' : 'Hold the tag to the back of your phone…');
   let done = false;
   const timeoutId = setTimeout(() => {
-    if (!done) { done = true; btOnce = null; showToast('NFC scan timed out — try again'); }
+    if (!done) { done = true; btOnce = null; showToast('NFC scan timed out — try again'); logTagEvent({ action: 'Read', id: '', ok: false, error: 'Timed out — no tag detected' }); }
   }, btReaderReady() ? 30000 : 10000);
   try {
     const onFieldReading = (event) => {
@@ -3671,6 +3743,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
       const value = writtenId || event.serialNumber;
       if (!value) { showToast('Tag has no readable ID'); return; }
       flashNfcSuccess();
+      logTagEvent({ action: 'Read', id: value, ok: true, detail: [writtenDate && 'date ' + writtenDate, writtenSize && 'size ' + writtenSize].filter(Boolean).join(', ') || (writtenId ? '' : 'no ID on tag — used serial') });
       const input = document.getElementById(targetInputId);
       if (input) { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); }
       if (dateTargetId && writtenDate) {
@@ -3703,6 +3776,7 @@ async function scanNfcIntoField(targetInputId, dateTargetId, sizeTargetId) {
   } catch (err) {
     clearTimeout(timeoutId);
     btOnce = null;
+    logTagEvent({ action: 'Read', id: '', ok: false, error: (err && err.message) ? err.message : 'unknown error' });
     showToast('NFC scan failed: ' + (err && err.message ? err.message : 'unknown error'));
   }
 }
@@ -3736,9 +3810,9 @@ async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
   }
 
   showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader to write…' : 'Hold the blank/existing tag to the back of your phone to write…');
-  let done = false;
+  let done = false, timedOut = false;
   const timeoutId = setTimeout(() => {
-    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+    if (!done) { done = true; timedOut = true; showToast('Write timed out — try again, holding the tag steady'); logTagEvent({ action: 'Write', id: trimmed, ok: false, error: 'Timed out waiting for the tag' }); }
   }, btReaderReady() ? 45000 : 10000);
   try {
     const records = [{ recordType: 'text', data: trimmed }];
@@ -3759,13 +3833,13 @@ async function writeNfcIdToTag(targetInputId, dateTargetId, sizeTargetId) {
       if (dateInput) { dateInput.value = dateValue; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     }
     if (targetInputId === 'pieceIdInput') savePieceEdits();
+    logTagEvent({ action: 'Write', id: trimmed, ok: true, detail: [dateValue && 'date ' + dateValue, sizeValue && 'size ' + sizeValue].filter(Boolean).join(', ') + (timedOut ? ' (finished after the timeout message)' : '') });
     showToast('Wrote "' + trimmed + '"' + (dateValue ? ' + date ' + dateValue : '') + (sizeValue ? ' + size ' + sizeValue : '') + ' to tag');
   } catch (err) {
     clearTimeout(timeoutId);
-    if (!done) {
-      done = true;
-      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
-    }
+    done = true;
+    logTagEvent({ action: 'Write', id: trimmed, ok: false, error: (err && err.message) ? err.message : 'unknown error' });
+    showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
   }
 }
 
@@ -3795,9 +3869,9 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
   }
 
   showToast(btReaderReady() ? 'Hold the tag to the Bluetooth reader to update the date…' : 'Hold the tag to the back of your phone to update the date…');
-  let done = false;
+  let done = false, timedOut = false;
   const timeoutId = setTimeout(() => {
-    if (!done) { done = true; showToast('Write timed out — try again, holding the tag steady'); }
+    if (!done) { done = true; timedOut = true; showToast('Write timed out — try again, holding the tag steady'); logTagEvent({ action: 'Date update', id: currentId, ok: false, error: 'Timed out waiting for the tag' }); }
   }, btReaderReady() ? 45000 : 10000);
   try {
     const records = [{ recordType: 'text', data: currentId }, { recordType: 'text', data: trimmedDate }];
@@ -3813,13 +3887,13 @@ async function writeDateOnlyToTag(targetInputId, dateTargetId, sizeTargetId) {
     if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
     if (dateInput) { dateInput.value = trimmedDate; dateInput.dispatchEvent(new Event('input', { bubbles: true })); }
     if (targetInputId === 'pieceIdInput') savePieceEdits();
+    logTagEvent({ action: 'Date update', id: currentId, ok: true, detail: 'date ' + trimmedDate + (timedOut ? ' (finished after the timeout message)' : '') });
     showToast('Updated date to ' + trimmedDate + ' (ID "' + currentId + '" unchanged)');
   } catch (err) {
     clearTimeout(timeoutId);
-    if (!done) {
-      done = true;
-      showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
-    }
+    done = true;
+    logTagEvent({ action: 'Date update', id: currentId, ok: false, error: (err && err.message) ? err.message : 'unknown error' });
+    showToast('Write failed: ' + (err && err.message ? err.message : 'unknown error'));
   }
 }
 
