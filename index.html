@@ -1326,7 +1326,7 @@ function pieceRef(entry) {
 
 let pieceCtx = null;   // { entry, ref }
 function openPiece(entry) {
-  const ref = pieceRef(entry);
+  const ref = entry.extra ? pieceRefExtra(entry.extra) : pieceRef(entry);
   if (!ref) { showToast('Could not open that piece'); return; }
   pieceCtx = { entry, ref };
   const o = ref.obj;
@@ -1343,10 +1343,16 @@ function openPiece(entry) {
     sizeSel.disabled = !!ref.fixedSize;
   } else { sizeWrap.style.display = 'none'; sizeSel.value = ''; }
   const serial = ref.serialF ? (o[ref.serialF] || '') : '';
-  document.getElementById('pieceInfo').textContent =
-    (entry.virtual ? 'Located in: ' + entry.virtual.via + (entry.item.unit ? ' (' + entry.item.unit + ')' : '') : 'Standalone — not assigned to a location') +
+  document.getElementById('pieceInfo').textContent = entry.extra
+    ? ('Not attached to a location' + (entry.extra.note ? ' · ' + entry.extra.note : ''))
+    : (entry.virtual ? 'Located in: ' + entry.virtual.via + (entry.item.unit ? ' (' + entry.item.unit + ')' : '') : 'Standalone — not assigned to a location') +
     (serial ? ' · Serial ' + serial : '');
   document.getElementById('pieceOverlay').classList.add('show');
+}
+// Pieces that only exist in the calibration list / history: edits go to the calibration list.
+function pieceRefExtra(x) {
+  return { type: x.type, idF: 'id', dateF: 'date', sizeF: x.type === 'SCBA Mask' ? 'size' : null, dateLabel: x.type === 'SCBA Mask' ? 'Calibration / EXP date' : (x.type === 'SCBA Frame' ? 'Last calibration' : 'Last hydro'),
+    obj: { id: x.name, date: x.date, size: x.size }, extra: x };
 }
 function closePiece() { document.getElementById('pieceOverlay').classList.remove('show'); pieceCtx = null; }
 
@@ -1359,6 +1365,17 @@ function savePieceEdits() {
   const newDate = document.getElementById('pieceDateInput').value.trim();
   const newSize = document.getElementById('pieceSizeInput').value;
   if (!newId) { showToast('ID can\'t be empty'); return false; }
+  if (ref.extra) {
+    // Keep the calibration list in step with what's on the tag
+    const oldKey = ref.extra.name;
+    const regType = ref.type === 'SCBA Frame' ? 'Frame' : ref.type === 'SCBA Cylinder' ? 'Cylinder' : (newSize || 'Large');
+    if (oldKey !== newId) delete equipmentRegistry[oldKey];
+    equipmentRegistry[newId] = { type: regType, calibrationDate: newDate };
+    saveEquipmentRegistry();
+    ref.extra.name = newId; ref.extra.date = newDate; if (newSize) ref.extra.size = newSize;
+    renderList();
+    return true;
+  }
   const idChanged = o[ref.idF] !== newId;
   o[ref.idF] = newId;
   o[ref.dateF] = newDate;
@@ -1372,6 +1389,42 @@ function savePieceEdits() {
 }
 
 let lastListEntries = [];
+const PIECE_SIZE_BY_ROLE = { L: 'Large', M: 'Medium', S: 'Small', Large: 'Large', Medium: 'Medium', Small: 'Small' };
+function getUnlinkedPieces(allowedTypes) {
+  // IDs already shown as linked or standalone pieces
+  const known = new Set();
+  ['SCBA Frame', 'SCBA Cylinder', 'SCBA Mask'].forEach(t => getLinkedComponentEntries(t).forEach(v => known.add(String(v.name).trim().toLowerCase())));
+  Object.values(items).forEach(it => {
+    [it.stdFrameId, it.stdCylId, it.stdMaskId].forEach(x => { if (x) known.add(String(x).trim().toLowerCase()); });
+  });
+  const out = [];
+  const seen = new Set(known);
+  const push = (name, type, size, date, note, source) => {
+    const key = String(name).trim().toLowerCase();
+    if (!key || seen.has(key) || !allowedTypes.includes(type)) return;
+    seen.add(key);
+    out.push({ name: String(name).trim(), type, size: size || '', date: date || '', note, source,
+      search: [name, type, size, date, note].filter(Boolean).join(' ').toLowerCase() });
+  };
+  Object.entries(equipmentRegistry).forEach(([id, r]) => {
+    const t = String(r.type || '').toLowerCase();
+    if (t === 'frame') push(id, 'SCBA Frame', '', r.calibrationDate, 'From calibration list', 'registry');
+    else if (t === 'cylinder') push(id, 'SCBA Cylinder', '', r.calibrationDate, 'From calibration list', 'registry');
+    else if (['large', 'medium', 'small'].includes(t)) push(id, 'SCBA Mask', t.charAt(0).toUpperCase() + t.slice(1), r.calibrationDate, 'From calibration list', 'registry');
+  });
+  Object.entries(componentHistory).forEach(([id, entries]) => {
+    const last = entries && entries[entries.length - 1];
+    if (!last) return;
+    const role = String(last.role || '');
+    const when = last.timestamp ? new Date(last.timestamp).toLocaleDateString('en-US') : '';
+    const note = 'Last seen at ' + last.collectionPointId + (when ? ' on ' + when : '');
+    if (/Frame/i.test(role)) push(id, 'SCBA Frame', '', '', note, 'history');
+    else if (/Cylinder/i.test(role)) push(id, 'SCBA Cylinder', '', '', note, 'history');
+    else if (/Mask/i.test(role)) push(id, 'SCBA Mask', PIECE_SIZE_BY_ROLE[role.split(' ')[0]] || '', '', note, 'history');
+  });
+  return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
 function renderList() {
   const listEl = document.getElementById('itemList');
   const query = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -1411,8 +1464,18 @@ function renderList() {
     }).forEach(v => virtualEntries.push({ id: v.id, item: items[v.id], virtual: v }));
   });
 
-  const entries = [...realEntries, ...virtualEntries]
+  let entries = [...realEntries, ...virtualEntries]
     .sort((a, b) => (b.item.updatedAt || 0) - (a.item.updatedAt || 0));
+
+  // Equipment pieces that aren't attached to any record right now (e.g. after a new month cleared the
+  // stations): still findable from the calibration list and from past movement history, so tags can be written.
+  let extraNote = '';
+  if (piecesMode && !unitFilterVal && !todoVal) {
+    const extras = getUnlinkedPieces(pieceTypes).filter(x => !query || x.search.includes(query));
+    const CAP = 300;
+    if (extras.length > CAP && !query) { extraNote = 'Showing the first ' + CAP + ' of ' + extras.length + ' unattached pieces — type an ID to find a specific one.'; }
+    entries = entries.concat(extras.slice(0, CAP).map(x => ({ id: '', item: null, virtual: null, extra: x })));
+  }
 
   document.getElementById('itemCount').textContent =
     Object.keys(items).length + ' item' + (Object.keys(items).length === 1 ? '' : 's') + ' tracked';
@@ -1424,7 +1487,22 @@ function renderList() {
 
   lastListEntries = entries;
   updateMonthProgress();
-  listEl.innerHTML = entries.map(({ id, item, virtual }, idx) => {
+  listEl.innerHTML = entries.map(({ id, item, virtual, extra }, idx) => {
+    if (extra) {
+      const meta = [extra.size && extra.size + ' Mask', extra.date, extra.note].filter(Boolean).join(' · ');
+      return `
+    <div class="item-card">
+      <div class="item-info">
+        <div class="item-name">${escapeHtml(extra.name)}</div>
+        <div class="item-meta">${escapeHtml(meta)}</div>
+        <div class="badges">
+          <span class="badge badge-type">${escapeHtml(extra.type)}</span>
+          <span class="badge" style="background:#334155;color:#cbd5e1;">Not at a location</span>
+        </div>
+      </div>
+      <div class="item-actions"><button class="pieceBtn" data-idx="${idx}">🏷️ Tag</button></div>
+    </div>`;
+    }
     const result = virtual ? '' : itemInspectionResult(item);
     const resultBadge = result === 'Pass' ? '<span class="badge badge-pass">Pass</span>'
       : result === 'Fail' ? '<span class="badge badge-fail">Fail</span>' : '';
@@ -1460,6 +1538,7 @@ function renderList() {
     </div>
   `; }).join('');
 
+  if (extraNote) listEl.insertAdjacentHTML('beforeend', '<div class="empty-state" style="padding:10px 0;">' + escapeHtml(extraNote) + '</div>');
   listEl.querySelectorAll('.pieceBtn').forEach(btn => {
     btn.addEventListener('click', () => openPiece(lastListEntries[Number(btn.dataset.idx)]));
   });
