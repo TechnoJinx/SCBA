@@ -2944,8 +2944,20 @@ async function parseCalibrationXlsx(file) {
 }
 
 function getKnownDateForComponent(componentId) {
-  const reg = equipmentRegistry[String(componentId).trim()];
-  return reg && reg.calibrationDate ? reg.calibrationDate : null;
+  const key = String(componentId).trim();
+  const reg = equipmentRegistry[key];
+  if (reg && reg.calibrationDate) return reg.calibrationDate;
+  // Cylinders aren't in the calibration sheet; their hydro dates live on the stations / standalone cylinders.
+  // Use the newest hydro date recorded for this cylinder ID anywhere in the data.
+  let best = null;
+  Object.values(items || {}).forEach((it) => {
+    if (!it) return;
+    let d = null;
+    if (it.scbaCylinderId === key) d = it.scbaLastHydro;
+    else if (it.stdCylId === key) d = it.stdCylLastHydro;
+    if (d && (!best || d > best)) best = d;
+  });
+  return best;
 }
 function applyKnownInfoIfAny(value, sizeTargetId, dateTargetId) {
   const applied = {};
