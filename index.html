@@ -3535,7 +3535,7 @@ async function parseRouteWorkbook(file) {
   const shared = xlsxParseSharedStrings(root['xl/sharedStrings.xml'] ? dec.decode(root['xl/sharedStrings.xml']) : null);
   const worksheets = xlsxListWorksheets(dec.decode(root['xl/workbook.xml']), dec.decode(root['xl/_rels/workbook.xml.rels']));
   const sheetEntries = await xlsxReadZipEntries(arrayBuffer, worksheets.map(w => w.path));
-  const cabinets = [], skipped = [];
+  const cabinets = [], stations = [], skipped = [];
   const txt = (v) => (v === undefined || v === null) ? '' : String(v).trim();
   for (const ws of worksheets) {
     const xml = sheetEntries[ws.path];
@@ -3545,6 +3545,29 @@ async function parseRouteWorkbook(file) {
     for (let i = 0; i < Math.min(rows.length, 15); i++) if (rows[i] && txt(rows[i][0]).toLowerCase().startsWith('collection point')) { h = i; break; }
     const hdr = h === -1 ? [] : (rows[h] || []).map(c => txt(c).toLowerCase());
     const colL = hdr.findIndex(x => x.startsWith('large')), colM = hdr.findIndex(x => x.startsWith('medium')), colS = hdr.findIndex(x => x.startsWith('small'));
+    const colPack = hdr.findIndex(x => x.startsWith('pack number'));
+    if (h !== -1 && colPack !== -1) {
+      // "Packs" layout: one SCBA station per row — Pack Number | Calibrated Date | Cylinder Number | Last Hydro Date | Pressure | [Large | EXP | Medium | EXP | Small | EXP] | Notes
+      const colCal = hdr.findIndex(x => x.startsWith('calibrated')), colCyl = hdr.findIndex(x => x.startsWith('cylinder'));
+      const colHyd = hdr.findIndex(x => x.startsWith('last hydro')), colPr = hdr.findIndex(x => x.startsWith('pressure'));
+      const colNotes = hdr.lastIndexOf('notes');
+      const cell = (row, c) => c === -1 ? '' : row[c];
+      for (let r = h + 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+        const m = txt(row[0]).match(/^(A\d+)\s*(.*)$/i);
+        if (!m) continue;
+        const pr = String(cell(row, colPr) === undefined || cell(row, colPr) === null ? '' : cell(row, colPr)).match(/\d+/);
+        const note = colNotes !== -1 ? txt(row[colNotes]) : '';
+        stations.push({ sheet: ws.name.trim(), id: m[1].toUpperCase(), label: m[2],
+          frame: xlsxCleanBarcode(cell(row, colPack)), cal: xlsxParseDateLoosely(cell(row, colCal)),
+          cyl: xlsxCleanBarcode(cell(row, colCyl)), hydro: xlsxParseDateLoosely(cell(row, colHyd)), pressure: pr ? pr[0] : '',
+          l: colL === -1 ? '' : xlsxCleanBarcode(row[colL]), lDate: colL === -1 ? null : xlsxParseDateLoosely(row[colL + 1]),
+          m: colM === -1 ? '' : xlsxCleanBarcode(row[colM]), mDate: colM === -1 ? null : xlsxParseDateLoosely(row[colM + 1]),
+          s: colS === -1 ? '' : xlsxCleanBarcode(row[colS]), sDate: colS === -1 ? null : xlsxParseDateLoosely(row[colS + 1]),
+          notes: note.toLowerCase() === 'notes' ? '' : note });
+      }
+      continue;
+    }
     if (h === -1 || colL === -1 || colM === -1 || colS === -1) { skipped.push(ws.name.trim()); continue; }
     const colSar = hdr.findIndex(x => x.startsWith('sar number')), colBox = hdr.findIndex(x => x.startsWith('mask box'));
     let cur = null;
@@ -3574,7 +3597,7 @@ async function parseRouteWorkbook(file) {
     }
     finish();
   }
-  return { cabinets, skipped };
+  return { cabinets, stations, skipped };
 }
 
 document.getElementById('uploadRouteLink').addEventListener('click', () => document.getElementById('routeFileInput').click());
@@ -3594,8 +3617,10 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
     const already = (it.masks || []).some(m => m && m.id);
     (already ? plan.hasMasks : plan.fill).push(c);
   });
-  if (!res.cabinets.length) {
-    alert('No mask boxes or SAR boards were found in this file.' + (res.skipped.length ? '\n\nTabs not recognized (skipped): ' + res.skipped.join(', ') : ''));
+  const splan = { fill: [], notFound: [] };
+  res.stations.forEach(st => { (items[st.id] && items[st.id].type === 'SCBA Station' ? splan.fill : splan.notFound).push(st); });
+  if (!res.cabinets.length && !res.stations.length) {
+    alert('No mask boxes, SAR boards or SCBA packs were found in this file.' + (res.skipped.length ? '\n\nTabs not recognized (skipped): ' + res.skipped.join(', ') : ''));
     return;
   }
   const maskCount = plan.fill.reduce((n, c) => n + c.rows.reduce((k, r) => k + (r.l ? 1 : 0) + (r.m ? 1 : 0) + (r.s ? 1 : 0), 0), 0);
@@ -3604,6 +3629,7 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
     '• ' + plan.fill.length + ' mask boxes / SAR boards will get their masks (' + maskCount + ' masks), expiry dates, SAR number, Mask Box result and notes\n' +
     '• ' + plan.hasMasks.length + ' already have masks in the app — their masks are left alone (only empty SAR number, Mask Box result and notes are filled)\n' +
     '• ' + plan.notFound.length + ' are not in the app' + (plan.notFound.length ? ' (' + plan.notFound.slice(0, 6).join(', ') + (plan.notFound.length > 6 ? '…' : '') + ')' : '') + '\n' +
+    '• ' + splan.fill.length + ' SCBA stations (packs tabs): empty Frame, Calibration date, Cylinder, Hydro date, Pressure, masks and notes get filled; existing entries are never overwritten' + (splan.notFound.length ? ' (' + splan.notFound.length + ' not in the app: ' + splan.notFound.slice(0, 6).map(x => x.id).join(', ') + (splan.notFound.length > 6 ? '…' : '') + ')' : '') + '\n' +
     (res.skipped.length ? '• Tabs skipped (different layout): ' + res.skipped.join(', ') + '\n' : '') +
     '\nThis reads the file on this device only. Continue?'
   )) return;
@@ -3632,10 +3658,30 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
     history.push({ location: itemDisplayName(it, c.id), result: itemInspectionResult(it), timestamp: now, equipment: equipmentSnapshot(it), note: 'Imported from ' + file.name });
     it.history = history; it.updatedAt = now; touched++;
   });
+  let stTouched = 0;
+  splan.fill.forEach(st => {
+    const it = items[st.id];
+    const history = it.history ? it.history.slice() : [];
+    let changed = false;
+    const setIf = (field, val) => { if (val && !it[field]) { it[field] = val; changed = true; return true; } return false; };
+    if (setIf('scbaFrameId', st.frame)) setIf('scbaLastCalibration', st.cal || getKnownDateForComponent(st.frame));
+    else if (st.cal && it.scbaFrameId === st.frame) setIf('scbaLastCalibration', st.cal);
+    if (setIf('scbaCylinderId', st.cyl)) setIf('scbaLastHydro', st.hydro || getKnownDateForComponent(st.cyl));
+    else if (st.hydro && it.scbaCylinderId === st.cyl) setIf('scbaLastHydro', st.hydro);
+    setIf('scbaPressure', st.pressure ? Number(st.pressure) : '');
+    [['scbaLMaskId', 'scbaLMaskExpDate', st.l, st.lDate], ['scbaMMaskId', 'scbaMMaskExpDate', st.m, st.mDate], ['scbaSMaskId', 'scbaSMaskExpDate', st.s, st.sDate]].forEach(([idF, dF, id, d]) => {
+      if (setIf(idF, id)) setIf(dF, d || getKnownDateForComponent(id));
+    });
+    setIf('scbaComments', st.notes);
+    if (!changed) return;
+    recordComponentLinksForItem(it, st.id, now);
+    history.push({ location: itemDisplayName(it, st.id), result: itemInspectionResult(it), timestamp: now, equipment: equipmentSnapshot(it), note: 'Imported from ' + file.name });
+    it.history = history; it.updatedAt = now; stTouched++;
+  });
   saveItems();
   try { saveComponentHistory(); } catch (err) { /* ignore */ }
   renderList();
-  alert('Route import complete.\n\n' + touched + ' mask boxes / SAR boards updated.' + (plan.notFound.length ? '\n' + plan.notFound.length + ' not found in the app.' : '') + (res.skipped.length ? '\nTabs skipped: ' + res.skipped.join(', ') : ''));
+  alert('Route import complete.\n\n' + touched + ' mask boxes / SAR boards updated.\n' + stTouched + ' SCBA stations updated.' + (splan.notFound.length ? '\n' + splan.notFound.length + ' SCBA stations not found in the app.' : '') + (plan.notFound.length ? '\n' + plan.notFound.length + ' not found in the app.' : '') + (res.skipped.length ? '\nTabs skipped: ' + res.skipped.join(', ') : ''));
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
