@@ -252,6 +252,8 @@
   <input type="file" id="calibrationFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="uploadMonthlyLink">📥 Import monthly inspection results</button>
   <input type="file" id="monthlyFileInput" accept=".xlsx" style="display:none;">
+  <button type="button" class="manual-link" id="uploadRouteLink">📥 Import SCBA route workbook (masks / SAR boards)</button>
+  <input type="file" id="routeFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -3519,6 +3521,121 @@ document.getElementById('monthlyFileInput').addEventListener('change', async (e)
     'SCBA Stations: ' + stats.scba.result + ' updated with a result, ' + stats.scba.commentsOnly + ' comments-only, ' + stats.scba.notFound + ' not found in the app' +
     '\n(' + (stats.scba.equipment || 0) + ' SCBA stations had equipment filled in)'
   );
+});
+
+// ---------- SCBA Inspection Route workbook (mask boxes + SAR boards) ----------
+// Layout: header row starting "Collection Point", then Large | EXP Date | Medium | EXP Date | Small | EXP Date | SAR Number | Mask Box | Notes.
+// A cabinet starts on a row whose first cell is "A03121 - SAR - Utilities Board #1"; blank-first-cell rows below it
+// are more masks for the same cabinet; an empty row ends it. Everything is read on this device — nothing is uploaded.
+async function parseRouteWorkbook(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const root = await xlsxReadZipEntries(arrayBuffer, ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/sharedStrings.xml']);
+  if (!root['xl/workbook.xml'] || !root['xl/_rels/workbook.xml.rels']) throw new Error('Could not find workbook structure in this file');
+  const dec = new TextDecoder();
+  const shared = xlsxParseSharedStrings(root['xl/sharedStrings.xml'] ? dec.decode(root['xl/sharedStrings.xml']) : null);
+  const worksheets = xlsxListWorksheets(dec.decode(root['xl/workbook.xml']), dec.decode(root['xl/_rels/workbook.xml.rels']));
+  const sheetEntries = await xlsxReadZipEntries(arrayBuffer, worksheets.map(w => w.path));
+  const cabinets = [], skipped = [];
+  const txt = (v) => (v === undefined || v === null) ? '' : String(v).trim();
+  for (const ws of worksheets) {
+    const xml = sheetEntries[ws.path];
+    if (!xml) continue;
+    const rows = xlsxParseWorksheetRows(dec.decode(xml), shared);
+    let h = -1;
+    for (let i = 0; i < Math.min(rows.length, 15); i++) if (rows[i] && txt(rows[i][0]).toLowerCase().startsWith('collection point')) { h = i; break; }
+    const hdr = h === -1 ? [] : (rows[h] || []).map(c => txt(c).toLowerCase());
+    const colL = hdr.findIndex(x => x.startsWith('large')), colM = hdr.findIndex(x => x.startsWith('medium')), colS = hdr.findIndex(x => x.startsWith('small'));
+    if (h === -1 || colL === -1 || colM === -1 || colS === -1) { skipped.push(ws.name.trim()); continue; }
+    const colSar = hdr.findIndex(x => x.startsWith('sar number')), colBox = hdr.findIndex(x => x.startsWith('mask box'));
+    let cur = null;
+    const finish = () => { if (cur) { cabinets.push(cur); cur = null; } };
+    for (let r = h + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const a = txt(row[0]);
+      const m = a.match(/^([A-Za-z]*\d+)\s*[-–]?\s*(.*)$/);
+      const mk = { l: xlsxCleanBarcode(row[colL]), lDate: xlsxParseDateLoosely(row[colL + 1]),
+                   m: xlsxCleanBarcode(row[colM]), mDate: xlsxParseDateLoosely(row[colM + 1]),
+                   s: xlsxCleanBarcode(row[colS]), sDate: xlsxParseDateLoosely(row[colS + 1]) };
+      const hasMask = !!(mk.l || mk.m || mk.s);
+      if (m && /^A\d+/i.test(m[1])) { finish(); cur = { sheet: ws.name.trim(), id: m[1].toUpperCase(), label: m[2], rows: [], sar: '', box: '', notes: [] }; }
+      else if (!a && !hasMask) { finish(); continue; }
+      if (!cur) continue;
+      if (hasMask) cur.rows.push(mk);
+      // Trailing cells (SAR number, Mask Box result, Notes). A cell reading "Notes" is just the label.
+      const extras = [];
+      for (let c = colS + 2; c < Math.max(row.length, colS + 4); c++) if (row[c] !== undefined && row[c] !== null && txt(row[c]) !== '') extras.push([c, txt(row[c])]);
+      extras.forEach(([c, v]) => {
+        if (v.toLowerCase() === 'notes') return;
+        if (c === colBox && resultIsValid(v)) cur.box = v;
+        else if (/^[A-Za-z]{2,4}\d+$/.test(v) && !cur.sar && (c === colSar || colSar === -1 || c > colS)) cur.sar = v;
+        else if (resultIsValid(v) && !cur.box) cur.box = v;
+        else cur.notes.push(v);
+      });
+    }
+    finish();
+  }
+  return { cabinets, skipped };
+}
+
+document.getElementById('uploadRouteLink').addEventListener('click', () => document.getElementById('routeFileInput').click());
+document.getElementById('routeFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  showToast('Reading ' + file.name + '…');
+  let res;
+  try { res = await parseRouteWorkbook(file); }
+  catch (err) { alert('Could not read that file: ' + (err && err.message ? err.message : 'unknown error')); return; }
+
+  const plan = { fill: [], hasMasks: [], notFound: [] };
+  res.cabinets.forEach(c => {
+    const it = items[c.id];
+    if (!it || it.type !== 'Mask Cabinet') { plan.notFound.push(c.id); return; }
+    const already = (it.masks || []).some(m => m && m.id);
+    (already ? plan.hasMasks : plan.fill).push(c);
+  });
+  if (!res.cabinets.length) {
+    alert('No mask boxes or SAR boards were found in this file.' + (res.skipped.length ? '\n\nTabs not recognized (skipped): ' + res.skipped.join(', ') : ''));
+    return;
+  }
+  const maskCount = plan.fill.reduce((n, c) => n + c.rows.reduce((k, r) => k + (r.l ? 1 : 0) + (r.m ? 1 : 0) + (r.s ? 1 : 0), 0), 0);
+  if (!confirm(
+    'Import ' + file.name + '?\n\n' +
+    '• ' + plan.fill.length + ' mask boxes / SAR boards will get their masks (' + maskCount + ' masks), expiry dates, SAR number, Mask Box result and notes\n' +
+    '• ' + plan.hasMasks.length + ' already have masks in the app — their masks are left alone (only empty SAR number, Mask Box result and notes are filled)\n' +
+    '• ' + plan.notFound.length + ' are not in the app' + (plan.notFound.length ? ' (' + plan.notFound.slice(0, 6).join(', ') + (plan.notFound.length > 6 ? '…' : '') + ')' : '') + '\n' +
+    (res.skipped.length ? '• Tabs skipped (different layout): ' + res.skipped.join(', ') + '\n' : '') +
+    '\nThis reads the file on this device only. Continue?'
+  )) return;
+
+  const now = Date.now();
+  let touched = 0;
+  [...plan.fill, ...plan.hasMasks].forEach(c => {
+    const it = items[c.id];
+    const history = it.history ? it.history.slice() : [];
+    let changed = false;
+    if (plan.fill.includes(c)) {
+      const masks = [];
+      c.rows.forEach(r => {
+        [['Large', r.l, r.lDate], ['Medium', r.m, r.mDate], ['Small', r.s, r.sDate]].forEach(([size, id, d]) => {
+          if (id) masks.push({ size, id, expDate: d || getKnownDateForComponent(id) || '' });
+        });
+      });
+      if (masks.length) { it.masks = masks; changed = true; }
+    }
+    if (/^notes$/i.test(String(it.maskCabSarNumber || '').trim())) it.maskCabSarNumber = '';   // the sheet's "Notes" label was once imported as a SAR number
+    if (c.sar && !it.maskCabSarNumber) { it.maskCabSarNumber = c.sar; changed = true; }
+    if (c.box && !it.maskCabBox) { it.maskCabBox = c.box; changed = true; }
+    if (c.notes.length && !it.maskCabComments) { it.maskCabComments = c.notes.join('; '); changed = true; }
+    if (!changed) return;
+    recordComponentLinksForItem(it, c.id, now);
+    history.push({ location: itemDisplayName(it, c.id), result: itemInspectionResult(it), timestamp: now, equipment: equipmentSnapshot(it), note: 'Imported from ' + file.name });
+    it.history = history; it.updatedAt = now; touched++;
+  });
+  saveItems();
+  try { saveComponentHistory(); } catch (err) { /* ignore */ }
+  renderList();
+  alert('Route import complete.\n\n' + touched + ' mask boxes / SAR boards updated.' + (plan.notFound.length ? '\n' + plan.notFound.length + ' not found in the app.' : '') + (res.skipped.length ? '\nTabs skipped: ' + res.skipped.join(', ') : ''));
 });
 
 document.getElementById('hardResetLink').addEventListener('click', async () => {
