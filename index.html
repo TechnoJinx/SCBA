@@ -4219,6 +4219,18 @@ if (!window.isSecureContext) {
   loadComponentHistory();
   loadEquipmentRegistry();
   await loadItems();
+  // One-time: the Main Control Room SCBA boards have no masks attached, so don't require them on the monthly checklist.
+  try {
+    if (!localStorage.getItem('safety_tracker_migr_mcr_boards_v1')) {
+      let n = 0;
+      Object.values(items).forEach((it) => {
+        if (it && it.type === 'SCBA Station' && it.unit === 'Main Control Room' && /board/i.test(it.scbaCabinetLocation || '')
+            && it.scbaNoMasks === undefined && !(it.scbaLMaskId || it.scbaMMaskId || it.scbaSMaskId)) { it.scbaNoMasks = true; n++; }
+      });
+      if (n) saveItems();
+      localStorage.setItem('safety_tracker_migr_mcr_boards_v1', '1');
+    }
+  } catch (e) { /* ignore */ }
   populateFilters();
   renderList();
   cloudAutoStart();
