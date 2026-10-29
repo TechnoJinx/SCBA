@@ -2788,7 +2788,13 @@ function xlsxParseDateLoosely(value) {
     }
   }
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m2 ? m2[0] : null;
+  if (m2) return m2[0];
+  const mm = s.match(/^([A-Za-z]{3})[a-z]*[-\s'](\d{2}|\d{4})$/);   // text like "May-26"
+  if (mm) {
+    const mi = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(mm[1].toLowerCase());
+    if (mi !== -1) { const y = mm[2].length === 2 ? 2000 + parseInt(mm[2], 10) : parseInt(mm[2], 10); return y + '-' + String(mi + 1).padStart(2, '0') + '-01'; }
+  }
+  return null;
 }
 function xlsxColLetterToIndex(ref) {
   const m = ref.match(/^([A-Z]+)/);
@@ -2849,7 +2855,7 @@ function xlsxListWorksheets(workbookXml, relsXml) {
   const relsDoc = new DOMParser().parseFromString(relsXml, 'application/xml');
   const relMap = {};
   [...relsDoc.getElementsByTagName('Relationship')].forEach(r => { relMap[r.getAttribute('Id')] = r.getAttribute('Target'); });
-  return sheets.map(s => ({ name: s.name, path: 'xl/' + relMap[s.rId] }));
+  return sheets.map(s => { const t = relMap[s.rId] || ''; return { name: s.name, path: t.startsWith('/') ? t.slice(1) : 'xl/' + t }; });
 }
 function xlsxFindHeaderRow(rows) {
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
@@ -2913,6 +2919,16 @@ async function parseMonthlyWorkbook(file) {
     const lightCol = xlsxFindCol(header, h => h.startsWith('light barcode'));
     const scbaCol = xlsxFindCol(header, h => h.startsWith('cabinet barcode'));
     const scbaInspCol = xlsxFindCol(header, h => h.startsWith('scba general inspection'));
+    const eqCols = {
+      frame: xlsxFindCol(header, h => h.startsWith('frame barcode')),
+      cal: xlsxFindCol(header, h => h.startsWith('last calibration')),
+      cyl: xlsxFindCol(header, h => h.startsWith('cylinder barcode')),
+      hydro: xlsxFindCol(header, h => h.startsWith('last hydro')),
+      l: xlsxFindCol(header, h => /^l\s*mask/.test(h)),
+      m: xlsxFindCol(header, h => /^m\s*mask/.test(h)),
+      s: xlsxFindCol(header, h => /^s\s*mask/.test(h))
+    };
+    const eqCell = (row, c) => (c === -1 || row[c] === undefined || row[c] === null) ? '' : row[c];
 
     for (let r = headerIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
@@ -2926,7 +2942,10 @@ async function parseMonthlyWorkbook(file) {
       }
       if (scbaCol !== -1 && row[scbaCol] && scbaInspCol !== -1) {
         const { id } = xlsxSplitCombined(row[scbaCol]);
-        if (id) updates.scba.push({ id, condition: row[scbaCol + 1], inspection: row[scbaInspCol], comments: row[scbaInspCol + 4] });
+        if (id) updates.scba.push({ id, condition: row[scbaCol + 1], inspection: row[scbaInspCol], comments: row[scbaInspCol + 4],
+          frame: xlsxCleanBarcode(eqCell(row, eqCols.frame)), calibration: xlsxParseDateLoosely(eqCell(row, eqCols.cal)),
+          cylinder: xlsxCleanBarcode(eqCell(row, eqCols.cyl)), hydro: xlsxParseDateLoosely(eqCell(row, eqCols.hydro)),
+          lMask: xlsxCleanBarcode(eqCell(row, eqCols.l)), mMask: xlsxCleanBarcode(eqCell(row, eqCols.m)), sMask: xlsxCleanBarcode(eqCell(row, eqCols.s)) });
       }
     }
   }
@@ -3409,6 +3428,7 @@ document.getElementById('monthlyFileInput').addEventListener('change', async (e)
     '• Set Inspection to Pass/Fail where the file has a real result\n' +
     '• Leave Inspection untouched where the cell doesn\'t have a valid Pass/Fail (e.g. a barcode was scanned into the wrong cell)\n' +
     '• Update Comments wherever the file has any, independent of the above\n' +
+    '• SCBA stations: fill in Frame, Cylinder and L/M/S mask barcodes and their dates where the app has them EMPTY (existing links are never overwritten)\n' +
     '• Last Inspected is NOT touched\n\n' +
     'This reads data already recorded in the file — it does not scan anything. Continue?'
   )) return;
@@ -3470,17 +3490,34 @@ document.getElementById('monthlyFileInput').addEventListener('change', async (e)
     if (resultIsValid(u.condition)) fields.scbaCabinetCondition = String(u.condition).trim();
     if (resultIsValid(u.inspection)) fields.scbaInspection = String(u.inspection).trim();
     if (u.comments && String(u.comments).trim()) fields.scbaComments = String(u.comments).trim();
-    if (Object.keys(fields).length) applyUpdate('scba', matchId, fields);
+    // Equipment: only fill what is empty in the app. Dates come from the sheet, else the calibration list.
+    const cur = items[matchId];
+    const eqAdded = [];
+    [['scbaFrameId', u.frame, 'scbaLastCalibration', u.calibration],
+     ['scbaCylinderId', u.cylinder, 'scbaLastHydro', u.hydro],
+     ['scbaLMaskId', u.lMask, 'scbaLMaskExpDate', null],
+     ['scbaMMaskId', u.mMask, 'scbaMMaskExpDate', null],
+     ['scbaSMaskId', u.sMask, 'scbaSMaskExpDate', null]].forEach(([idF, idVal, dateF, dateVal]) => {
+      if (!idVal || cur[idF]) return;
+      fields[idF] = idVal; eqAdded.push(idF);
+      if (!cur[dateF]) { const dt = dateVal || getKnownDateForComponent(idVal); if (dt) fields[dateF] = dt; }
+    });
+    if (Object.keys(fields).length) {
+      applyUpdate('scba', matchId, fields);
+      if (eqAdded.length) { recordComponentLinksForItem(items[matchId], matchId, now); stats.scba.equipment = (stats.scba.equipment || 0) + 1; }
+    }
   });
 
   saveItems();
+  try { saveComponentHistory(); } catch (e) { /* ignore */ }
   renderList();
 
   alert(
     'Import complete.\n\n' +
     'Extinguishers: ' + stats.ext.result + ' updated with a result, ' + stats.ext.commentsOnly + ' comments-only, ' + stats.ext.notFound + ' not found in the app\n' +
     'Lights: ' + stats.light.result + ' updated with a result, ' + stats.light.commentsOnly + ' comments-only, ' + stats.light.notFound + ' not found in the app\n' +
-    'SCBA Stations: ' + stats.scba.result + ' updated with a result, ' + stats.scba.commentsOnly + ' comments-only, ' + stats.scba.notFound + ' not found in the app'
+    'SCBA Stations: ' + stats.scba.result + ' updated with a result, ' + stats.scba.commentsOnly + ' comments-only, ' + stats.scba.notFound + ' not found in the app' +
+    '\n(' + (stats.scba.equipment || 0) + ' SCBA stations had equipment filled in)'
   );
 });
 
