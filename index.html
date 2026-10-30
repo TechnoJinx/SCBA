@@ -254,6 +254,7 @@
   <input type="file" id="monthlyFileInput" accept=".xlsx" style="display:none;">
   <button type="button" class="manual-link" id="uploadRouteLink">📥 Import SCBA route workbook (masks / SAR boards)</button>
   <input type="file" id="routeFileInput" accept=".xlsx" style="display:none;">
+  <div id="buildTag" style="font-size:11px;opacity:.55;margin:6px 0;"></div>
   <button type="button" class="manual-link" id="hardResetLink" style="color:#f87171;">⚠️ Reset app data & reload latest (use if updates aren't showing up)</button>
 </div>
 
@@ -799,6 +800,7 @@ const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
 // A Cylinder Station is a collection point (e.g. A03155 in the Safety Warehouse) that holds one cylinder; it shares the cylinder fields (stdCyl*) with a loose SCBA Cylinder.
+const APP_BUILD = 'build 2026-10-30 · cylinder stations';
 const isCylType = (t) => t === 'SCBA Cylinder' || t === 'Cylinder Station';
 const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'Cylinder Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
@@ -4310,7 +4312,7 @@ if (!window.isSecureContext) {
   // Missing ones are created, loose-cylinder records and empty placeholder SCBA stations at these barcodes are converted,
   // and anything holding real data under another type is left alone.
   try {
-    if (!localStorage.getItem('safety_tracker_migr_cyl_stations_v2')) {
+    {
       const ids = [];
       for (let n = 3155; n <= 3174; n++) ids.push('A0' + n);
       for (let n = 3205; n <= 3252; n++) ids.push('A0' + n);
@@ -4319,22 +4321,23 @@ if (!window.isSecureContext) {
         const cur = items[id];
         if (cur && cur.type === 'Cylinder Station') return;
         if (cur && cur.type === 'SCBA Cylinder') { cur.type = 'Cylinder Station'; if (!cur.unit) cur.unit = 'Safety Warehouse'; cur.updatedAt = t; changed++; return; }
-        const emptyStation = cur && cur.type === 'SCBA Station' && !['scbaCabinetLocation', 'scbaFrameId', 'scbaCylinderId', 'scbaLMaskId', 'scbaMMaskId', 'scbaSMaskId', 'scbaInspection', 'scbaComments'].some(f => cur[f]);
+        const emptyStation = cur && cur.type === 'SCBA Station' && !['scbaCabinetLocation', 'scbaFrameId', 'scbaCylinderId', 'scbaLMaskId', 'scbaMMaskId', 'scbaSMaskId'].some(f => cur[f]);
         if (cur && !emptyStation) return;
         items[id] = { type: 'Cylinder Station', unit: 'Safety Warehouse', stdCylId: '', stdCylLastHydro: '', stdCylPressure: '', stdCylComments: '',
           history: [], createdAt: t, updatedAt: t };
         changed++;
       });
       if (changed) saveItems();
-      // The monthly checklist tracks Cylinder Stations (not loose cylinders).
-      if (Array.isArray(monthPlan.types)) {
+      // The monthly checklist tracks Cylinder Stations (not loose cylinders) — adjusted once.
+      if (!localStorage.getItem('safety_tracker_migr_cyl_stations_v2') && Array.isArray(monthPlan.types)) {
         monthPlan.types = monthPlan.types.filter(x => x !== 'SCBA Cylinder');
         if (!monthPlan.types.includes('Cylinder Station')) monthPlan.types.push('Cylinder Station');
         saveMonthPlan();
+        localStorage.setItem('safety_tracker_migr_cyl_stations_v2', '1');
       }
-      localStorage.setItem('safety_tracker_migr_cyl_stations_v2', '1');
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.warn('Cylinder station conversion failed:', e); }
+  try { document.getElementById('buildTag').textContent = 'App ' + APP_BUILD; } catch (e) { /* ignore */ }
   populateFilters();
   renderList();
   cloudAutoStart();
