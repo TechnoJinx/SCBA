@@ -873,7 +873,13 @@ async function loadItems() {
 window.__scbaCloud = { onItemsSaved: null, onHistorySaved: null };
 function saveItems() {
   if (archiveEdit) { persistArchiveEdit(); return; }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch (e) {
+    // Browser storage full: trim each record's old history (keeps the newest entries) and try once more.
+    Object.values(items).forEach((it) => { if (it && Array.isArray(it.history) && it.history.length > 6) it.history = it.history.slice(-6); });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
   if (window.__scbaCloud.onItemsSaved) window.__scbaCloud.onItemsSaved();
 }
 const STALE_PLACEHOLDER_UNITS = ['Portables', 'Spill kits', 'Incident response equipment'];
@@ -2013,24 +2019,30 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
   if (draft.type === 'SCBA Frame' && !draft.stdFrameId) draft.stdFrameId = currentId;
   if (draft.type === 'SCBA Mask' && !draft.stdMaskId) draft.stdMaskId = currentId;
 
-  const now = Date.now();
-  const existing = items[currentId];
-  const history = existing?.history ? existing.history.slice() : [];
-  history.push({
-    location: itemDisplayName(draft, currentId),
-    result: itemInspectionResult(draft),
-    timestamp: now,
-    equipment: equipmentSnapshot(draft)
-  });
+  try {
+    const now = Date.now();
+    const existing = items[currentId];
+    const history = existing?.history ? existing.history.slice() : [];
+    history.push({
+      location: itemDisplayName(draft, currentId),
+      result: itemInspectionResult(draft),
+      timestamp: now,
+      equipment: equipmentSnapshot(draft)
+    });
 
-  items[currentId] = { ...draft, history, updatedAt: now, createdAt: existing?.createdAt || now };
-  recordComponentLinksForItem(draft, currentId, now);
-  saveComponentHistory();
-  saveItems();
-  populateFilters();
-  renderList();
-  closeModal();
-  showToast('Saved');
+    items[currentId] = { ...draft, history, updatedAt: now, createdAt: existing?.createdAt || now };
+    recordComponentLinksForItem(draft, currentId, now);
+    saveComponentHistory();
+    saveItems();
+    populateFilters();
+    renderList();
+    closeModal();
+    showToast('Saved');
+  } catch (err) {
+    // Never fail silently: show what went wrong so it can be fixed.
+    alert('Could not save ' + currentId + '.\n\n' + (err && err.name ? err.name + ': ' : '') + (err && err.message ? err.message : err) +
+      '\n\nIf this mentions storage or quota, use "Download" to back up your data, then "Reset app data & reload latest".');
+  }
 });
 
 document.getElementById('deleteItemBtn').addEventListener('click', () => {
