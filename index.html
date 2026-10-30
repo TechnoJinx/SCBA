@@ -388,13 +388,9 @@
       <div id="maskCabRowsContainer"></div>
       <button type="button" id="maskCabAddRowBtn" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px dashed var(--card-border);background:none;color:var(--accent);font-size:13px;cursor:pointer;">+ Add Mask</button>
 
-      <label>SAR Number</label>
-      <div class="input-with-scan">
-        <input type="text" id="maskCabSarNumberInput" placeholder="Tap 📡 to scan">
-        <button type="button" class="scan-nfc-btn" data-target="maskCabSarNumberInput" title="Read tag">📡</button>
-        <button type="button" class="scan-cam-btn" data-target="maskCabSarNumberInput" title="Scan barcode">📷</button>
-        <button type="button" class="write-nfc-btn" data-target="maskCabSarNumberInput" title="Write ID to tag">✏️</button>
-      </div>
+      <div class="subsection-label">SARs in this cabinet</div>
+      <div id="maskCabSarRowsContainer"></div>
+      <button type="button" id="maskCabAddSarBtn" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px dashed var(--card-border);background:none;color:var(--accent);font-size:13px;cursor:pointer;">+ Add SAR</button>
       <label>Mask Box</label>
       <select id="maskCabBoxInput">
         <option value="">— Not set —</option><option value="Pass">Pass</option><option value="Fail">Fail</option><option value="N/A">N/A</option>
@@ -800,7 +796,12 @@ const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
 // A Cylinder Station is a collection point (e.g. A03155 in the Safety Warehouse) that holds one cylinder; it shares the cylinder fields (stdCyl*) with a loose SCBA Cylinder.
-const APP_BUILD = 'build 2026-10-30 · cylinder stations';
+const APP_BUILD = 'build 2026-10-30 · cylinder stations + multiple SARs';
+// A mask cabinet can hold several SARs. item.sars is the list; maskCabSarNumber mirrors the first one (older exports/imports use it).
+function cabSars(item) {
+  if (item && Array.isArray(item.sars)) return item.sars.filter(Boolean);
+  return item && item.maskCabSarNumber ? [item.maskCabSarNumber] : [];
+}
 const isCylType = (t) => t === 'SCBA Cylinder' || t === 'Cylinder Station';
 const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'Cylinder Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
@@ -848,7 +849,7 @@ function expandSeedData(compact) {
     if (maskCabLId) masks.push({ size: 'Large', id: maskCabLId, expDate: maskCabLExpDate || '' });
     if (maskCabMId) masks.push({ size: 'Medium', id: maskCabMId, expDate: maskCabMExpDate || '' });
     if (maskCabSId) masks.push({ size: 'Small', id: maskCabSId, expDate: maskCabSExpDate || '' });
-    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, masks, maskCabSarNumber, maskCabBox,
+    out[id] = { type: 'Mask Cabinet', unit, maskCabLocation, maskCabCondition, masks, maskCabSarNumber, sars: maskCabSarNumber ? [maskCabSarNumber] : [], maskCabBox,
       maskCabInspection, maskCabLastInspected, maskCabComments,
       history: [{ location: maskCabLocation, result: maskCabBox, timestamp: now, equipment:
         [...masks.filter(m => m.id).map(m => [(m.size || '') + ' Mask', m.id]), ...(maskCabSarNumber ? [['SAR', maskCabSarNumber]] : [])] }], createdAt: now, updatedAt: now };
@@ -1039,7 +1040,7 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
   } else if (item.type === 'SCBA Mask') {
     recordComponentLink(item.stdMaskId, collectionPointId, (item.stdMaskSize || '') + ' Mask', timestamp);
   } else if (item.type === 'Mask Cabinet') {
-    recordComponentLink(item.maskCabSarNumber, collectionPointId, 'SAR', timestamp);
+    cabSars(item).forEach(sid => recordComponentLink(sid, collectionPointId, 'SAR', timestamp));
     (item.masks || []).forEach(m => recordComponentLink(m.id, collectionPointId, (m.size || '') + ' Mask', timestamp));
   }
 }
@@ -1210,7 +1211,7 @@ function equipmentSnapshot(d) {
     if (d.scbaSMaskId) snap.push(['S Mask', d.scbaSMaskId]);
   } else if (d.type === 'Mask Cabinet') {
     (d.masks || []).filter(m => m.id).forEach(m => snap.push([(m.size || '') + ' Mask', m.id]));
-    if (d.maskCabSarNumber) snap.push(['SAR', d.maskCabSarNumber]);
+    cabSars(d).forEach(sid => snap.push(['SAR', sid]));
   }
   return snap;
 }
@@ -1293,7 +1294,7 @@ function findMatchingId(value) {
       }
     } else if (item.type === 'Mask Cabinet') {
       const maskIds = (item.masks || []).map(m => m.id);
-      if ([...maskIds, item.maskCabSarNumber]
+      if ([...maskIds, ...cabSars(item)]
         .some(f => f && String(f).trim().toLowerCase() === v)) {
         return id;
       }
@@ -1307,7 +1308,7 @@ function itemSearchHay(item, id) {
   if (item.type === 'SCBA Station') {
     parts.push(item.scbaFrameId, item.scbaCylinderId, item.scbaLMaskId, item.scbaMMaskId, item.scbaSMaskId);
   } else if (item.type === 'Mask Cabinet') {
-    parts.push(...(item.masks || []).map(m => m.id), item.maskCabSarNumber);
+    parts.push(...(item.masks || []).map(m => m.id), ...cabSars(item));
   }
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
@@ -1690,7 +1691,7 @@ const VIEW_FIELDS = {
   'Eyewash Station': [['Location','eyewashLocation'],['Inspection','eyewashInspection'],['Last Service','eyewashLastService'],['Last Inspected','eyewashLastInspected'],['Comments','eyewashComments']],
   'Spill Kit': [['Location','spillLocation'],['Car Seal','spillSeal'],['Missing Items','spillMissingItems'],['Box Condition','spillBoxCondition'],['Last Inspected','spillLastInspected'],['Comments','spillComments']],
   'Mask Cabinet': [['Location','maskCabLocation'],['Cabinet Condition','maskCabCondition'],
-    ['SAR Number','maskCabSarNumber'],['Mask Box','maskCabBox'],
+['Mask Box','maskCabBox'],
     ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
   'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
   'SCBA Station': [['Pack present','scbaPackPresent'],['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
@@ -1729,6 +1730,10 @@ function openView(id) {
           <span class="view-value">${escapeHtml(m.id)}${m.expDate ? ' · ' + escapeHtml(m.expDate) : ''}</span>
         </div>
       `).join('');
+  }
+  if (item.type === 'Mask Cabinet' && cabSars(item).length) {
+    masksHtml += '<div class="subsection-label">SARs (' + cabSars(item).length + ')</div>' + cabSars(item).map((sid, n) => `
+      <div class="view-row"><span class="view-label">SAR ${n + 1}</span><span class="view-value">${escapeHtml(sid)}</span></div>`).join('');
   }
   container.innerHTML = masksHtml + (fields
     .filter(([, key]) => item[key])
@@ -1853,6 +1858,32 @@ document.getElementById('maskCabAddRowBtn').addEventListener('click', () => {
   renderMaskCabRows();
 });
 
+let maskCabSars = []; // working list of SAR IDs while the modal is open
+function sarRowFieldId(idx) { return 'sarRow' + idx + '_id'; }
+function renderSarRows() {
+  document.getElementById('maskCabSarRowsContainer').innerHTML = maskCabSars.map((id, idx) => `
+    <div class="mask-row" data-sidx="${idx}">
+      <div class="input-with-scan">
+        <input type="text" id="${sarRowFieldId(idx)}" data-sidx="${idx}" placeholder="Tap 📡 to scan" value="${escapeAttr(id || '')}">
+        <button type="button" class="scan-nfc-btn" data-target="${sarRowFieldId(idx)}" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="${sarRowFieldId(idx)}" title="Scan barcode">📷</button>
+        <button type="button" class="write-nfc-btn" data-target="${sarRowFieldId(idx)}" title="Write ID to tag">✏️</button>
+        <button type="button" class="mask-row-remove sar-remove" data-sidx="${idx}" title="Remove this SAR">✕</button>
+      </div>
+    </div>`).join('') || '<div class="empty-state" style="padding:12px 0;">No SARs on this cabinet</div>';
+}
+document.getElementById('maskCabSarRowsContainer').addEventListener('input', (e) => {
+  const i = parseInt(e.target.dataset.sidx, 10);
+  if (!isNaN(i) && i < maskCabSars.length) maskCabSars[i] = e.target.value.trim();
+});
+document.getElementById('maskCabSarRowsContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('.sar-remove');
+  if (!btn) return;
+  maskCabSars.splice(parseInt(btn.dataset.sidx, 10), 1);
+  renderSarRows();
+});
+document.getElementById('maskCabAddSarBtn').addEventListener('click', () => { maskCabSars.push(''); renderSarRows(); });
+
 function openModal(id) {
   currentId = id;
   const existing = items[id];
@@ -1911,7 +1942,8 @@ function openModal(id) {
     maskCabRows = [];
   }
   renderMaskCabRows();
-  document.getElementById('maskCabSarNumberInput').value = existing?.maskCabSarNumber || '';
+  maskCabSars = cabSars(existing).slice();
+  renderSarRows();
   document.getElementById('maskCabBoxInput').value = existing?.maskCabBox || '';
   document.getElementById('maskCabInspectionInput').value = existing?.maskCabInspection || '';
   document.getElementById('maskCabLastInspectedInput').value = existing?.maskCabLastInspected || '';
@@ -2013,7 +2045,8 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     maskCabLocation: document.getElementById('maskCabLocationInput').value.trim(),
     maskCabCondition: document.getElementById('maskCabConditionInput').value,
     masks: maskCabRows.filter(m => m.id || m.expDate).map(m => ({ size: m.size, id: m.id, expDate: m.expDate })),
-    maskCabSarNumber: document.getElementById('maskCabSarNumberInput').value.trim(),
+    sars: maskCabSars.map(x => String(x || '').trim()).filter(Boolean),
+    maskCabSarNumber: (maskCabSars.map(x => String(x || '').trim()).filter(Boolean)[0]) || '',
     maskCabBox: document.getElementById('maskCabBoxInput').value,
     maskCabInspection: document.getElementById('maskCabInspectionInput').value,
     maskCabLastInspected: document.getElementById('maskCabLastInspectedInput').value,
@@ -2304,7 +2337,7 @@ function buildXlsxSheetsFromItems(itemsObj) {
   const maskCabRows = allItems.filter(([, i]) => i.type === 'Mask Cabinet').map(([id, i]) => [
     i.unit, combinedLabel(id, i.maskCabLocation), i.maskCabCondition,
     (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
-    i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments
+    cabSars(i).join(', '), i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments
   ]);
   if (maskCabRows.length) sheets.push({ name: 'Mask Cabinets', rows: [
     ['Unit', 'Cabinet barcode and location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
@@ -2392,7 +2425,7 @@ function buildTypeSheet(key, itemsObj) {
       ['Barcode', 'Unit', 'Location', 'Cabinet condition', 'Masks', 'SAR Number', 'Mask Box', 'Inspection', 'Last inspected', 'Comments'],
       ...ofType('Mask Cabinet').map(([id, i]) => [id, i.unit, i.maskCabLocation, i.maskCabCondition,
         (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
-        i.maskCabSarNumber, i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments])
+        cabSars(i).join(', '), i.maskCabBox, i.maskCabInspection, i.maskCabLastInspected, i.maskCabComments])
     ]};
   }
   if (key === 'ext') {
@@ -2718,7 +2751,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       i.spillLocation || '', i.spillSeal || '', i.spillMissingItems || '', i.spillBoxCondition || '', i.spillLastInspected || '', i.spillComments || '',
       i.maskCabLocation || '', i.maskCabCondition || '',
       (i.masks || []).filter(m => m.id).map(m => (m.size || '') + ':' + m.id + (m.expDate ? '(' + m.expDate + ')' : '')).join('; '),
-      i.maskCabSarNumber || '', i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
+      cabSars(i).join(', '), i.maskCabBox || '', i.maskCabInspection || '', i.maskCabLastInspected || '', i.maskCabComments || '',
       i.sarLocation || '', i.sarId || '', i.sarInspection || '', i.sarLastInspected || '', i.sarComments || '',
       i.scbaCabinetLocation || '', i.scbaCabinetCondition || '',
       i.scbaFrameId || '', i.scbaLastCalibration || '', i.scbaFrameSerialNumber || '',
@@ -3230,6 +3263,7 @@ function clearEquipmentFields(item) {
   } else if (item.type === 'Mask Cabinet') {
     item.masks = [];
     item.maskCabSarNumber = '';
+    item.sars = [];
   } else if (item.type === 'SAR') {
     item.sarId = '';
   }
@@ -3720,14 +3754,14 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
       });
       if (masks.length) { it.masks = masks; changed = true; }
     }
-    if (/^notes$/i.test(String(it.maskCabSarNumber || '').trim())) it.maskCabSarNumber = '';   // the sheet's "Notes" label was once imported as a SAR number
+    if (/^notes$/i.test(String(it.maskCabSarNumber || '').trim())) it.maskCabSarNumber = '', it.sars = [];   // the sheet's "Notes" label was once imported as a SAR number
     // Masks already in the app: fill any empty expiry date (from the sheet for the same mask ID, else the calibration list).
     const sheetDates = {};
     c.rows.forEach(r => { [[r.l, r.lDate], [r.m, r.mDate], [r.s, r.sDate]].forEach(([id, d]) => { if (id && d) sheetDates[id] = d; }); });
     (it.masks || []).forEach(mk => {
       if (mk && mk.id && !mk.expDate) { const d = sheetDates[mk.id] || getKnownDateForComponent(mk.id); if (d) { mk.expDate = d; changed = true; } }
     });
-    if (c.sar && !it.maskCabSarNumber) { it.maskCabSarNumber = c.sar; changed = true; }
+    if (c.sar && !cabSars(it).length) { it.maskCabSarNumber = c.sar; it.sars = [c.sar]; changed = true; }
     if (c.box && !it.maskCabBox) { it.maskCabBox = c.box; changed = true; }
     if (c.notes.length && !it.maskCabComments) { it.maskCabComments = c.notes.join('; '); changed = true; }
     if (!changed) return;
