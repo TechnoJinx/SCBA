@@ -286,6 +286,14 @@
   <div class="modal">
     <h2 id="modalTitle">New Item</h2>
     <div class="tag-id" id="modalTagId"></div>
+    <div id="assignLocationBlock" style="display:none;margin:8px 0 4px;">
+      <label>Collection point barcode (gives this record its location)</label>
+      <div class="input-with-scan">
+        <input type="text" id="assignLocationInput" placeholder="Scan or type the collection point's barcode">
+        <button type="button" class="scan-nfc-btn" data-target="assignLocationInput" title="Read tag">📡</button>
+        <button type="button" class="scan-cam-btn" data-target="assignLocationInput" title="Scan barcode">📷</button>
+      </div>
+    </div>
 
     <label>Equipment Type</label>
     <div class="type-toggle" id="typeToggle">
@@ -796,7 +804,7 @@ const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
 // A Cylinder Station is a collection point (e.g. A03155 in the Safety Warehouse) that holds one cylinder; it shares the cylinder fields (stdCyl*) with a loose SCBA Cylinder.
-const APP_BUILD = 'build 2026-10-30 · cylinder stations + multiple SARs';
+const APP_BUILD = 'build 2026-10-30 · assign location';
 // A mask cabinet can hold several SARs. item.sars is the list; maskCabSarNumber mirrors the first one (older exports/imports use it).
 function cabSars(item) {
   if (item && Array.isArray(item.sars)) return item.sars.filter(Boolean);
@@ -1892,6 +1900,10 @@ function openModal(id) {
     ? 'Not yet at a location — link its RFID/barcode below when you have it'
     : 'ID: ' + id;
 
+  const unassigned = id.startsWith('UNASSIGNED-');
+  document.getElementById('assignLocationBlock').style.display = unassigned ? '' : 'none';
+  document.getElementById('assignLocationInput').value = '';
+
   const regEntry = !existing ? equipmentRegistry[String(id).trim()] : null;
   const regDefaultType = regEntry
     ? (regEntry.type === 'Frame' ? 'SCBA Frame'
@@ -2010,6 +2022,18 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
 
 document.getElementById('saveItemBtn').addEventListener('click', () => {
   if (!currentId) return;
+  // An item added "not at a location yet" gets its collection-point barcode here: its record moves to that barcode.
+  const newLoc = (document.getElementById('assignLocationInput').value || '').trim();
+  if (currentId.startsWith('UNASSIGNED-') && newLoc && !newLoc.startsWith('UNASSIGNED-')) {
+    if (items[newLoc]) {
+      alert(newLoc + ' is already used by "' + itemDisplayName(items[newLoc], newLoc) + '" (' + items[newLoc].type + ').\n\nOpen that record instead, or enter a different barcode.');
+      return;
+    }
+    items[newLoc] = items[currentId];
+    delete items[currentId];
+    Object.values(componentHistory).forEach(arr => (arr || []).forEach(e => { if (e && e.collectionPointId === currentId) e.collectionPointId = newLoc; }));
+    currentId = newLoc;
+  }
   const unit = NO_UNIT_TYPES.includes(currentType) ? '' : document.getElementById('unitInput').value;
   if (unit && unit !== ADD_NEW_VALUE) ensureUnit(unit);
 
