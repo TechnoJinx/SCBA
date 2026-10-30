@@ -896,13 +896,33 @@ function ensureUnit(name) { if (name && !units.includes(name)) { units.push(name
 // ---------- Component history (per-RFID-tag movement across collection points) ----------
 const COMPONENT_HISTORY_KEY = 'safety_tracker_component_history_v1';
 let componentHistory = {};
+const HISTORY_CAP = 12;   // newest movements kept per tag — keeps browser storage (≈5 MB total) from filling up
+function trimComponentHistory(h, cap) {
+  let changed = false;
+  Object.keys(h || {}).forEach((k) => { if (Array.isArray(h[k]) && h[k].length > cap) { h[k] = h[k].slice(-cap); changed = true; } });
+  return changed;
+}
 function loadComponentHistory() {
   try { const raw = localStorage.getItem(COMPONENT_HISTORY_KEY); componentHistory = raw ? JSON.parse(raw) : {}; }
   catch (e) { componentHistory = {}; }
+  if (trimComponentHistory(componentHistory, HISTORY_CAP)) {
+    try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); } catch (e) { /* retried on next save */ }
+  }
 }
 function saveComponentHistory() {
   if (archiveEdit) return;
-  localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory));
+  trimComponentHistory(componentHistory, HISTORY_CAP);
+  try {
+    localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory));
+  } catch (e) {
+    // Storage full: keep fewer movements per tag, then fewer still. A history problem must never block saving equipment.
+    let ok = false;
+    for (const cap of [6, 3, 1]) {
+      trimComponentHistory(componentHistory, cap);
+      try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(componentHistory)); ok = true; break; } catch (e2) { /* try smaller */ }
+    }
+    if (!ok) console.warn('Could not store component history (storage full).');
+  }
   if (window.__scbaCloud.onHistorySaved) window.__scbaCloud.onHistorySaved();
 }
 
@@ -2482,8 +2502,9 @@ const cloudBridge = {
         const k = e.collectionPointId + '|' + e.role + '|' + e.timestamp;
         if (!seen.has(k)) seen.set(k, e);
       });
-      const merged = Array.from(seen.values()).sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
-      if (merged.length !== (hist[key] || []).length) { hist[key] = merged; changed = true; }
+      const merged = Array.from(seen.values()).sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0)).slice(-HISTORY_CAP);
+      const cur = hist[key] || [];
+      if (merged.length !== cur.length || (merged.length && cur.length && merged[merged.length - 1].timestamp !== cur[cur.length - 1].timestamp)) { hist[key] = merged; changed = true; }
     });
     if (changed) { try { localStorage.setItem(COMPONENT_HISTORY_KEY, JSON.stringify(hist)); } catch (e) { /* quota */ } }
   }
