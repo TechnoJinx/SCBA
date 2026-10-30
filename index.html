@@ -295,6 +295,7 @@
       <button type="button" data-type="Mask Cabinet">Mask Cabinet</button>
       <button type="button" data-type="SAR">SAR</button>
       <button type="button" data-type="SCBA Station">SCBA Station</button>
+      <button type="button" data-type="Cylinder Station">Cylinder Station</button>
       <button type="button" data-type="SCBA Cylinder">SCBA Cylinder</button>
       <button type="button" data-type="SCBA Frame">SCBA Frame</button>
       <button type="button" data-type="SCBA Mask">SCBA Mask</button>
@@ -797,7 +798,9 @@ const STORAGE_KEY = 'safety_tracker_items_v6';
 const UNITS_KEY = 'safety_tracker_units_v1';
 const ADD_NEW_VALUE = '__add_new__';
 const DEFAULT_UNITS = ['Reformer', 'Hydrocracker', 'Calciner', 'Crude', 'Utilities', 'Blender', 'Coker', 'Shops', 'I&E', 'Buildings', 'Dock & Offsite', 'Barclay village', 'BRMs', 'Cars', 'Spares', 'North Fire Hall', 'West Fire Hall', 'South Fire Hall', 'Main Control Room', 'Safety Warehouse'];
-const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
+// A Cylinder Station is a collection point (e.g. A03155 in the Safety Warehouse) that holds one cylinder; it shares the cylinder fields (stdCyl*) with a loose SCBA Cylinder.
+const isCylType = (t) => t === 'SCBA Cylinder' || t === 'Cylinder Station';
+const ALL_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'Cylinder Station', 'SCBA Cylinder', 'SCBA Frame', 'SCBA Mask'];
 
 let items = {};
 let units = [];
@@ -825,7 +828,7 @@ function expandSeedData(compact) {
           .filter(([, v]) => v) }], createdAt: now, updatedAt: now };
   });
   (compact.stdcyl || []).forEach(([id, unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments]) => {
-    out[id] = { type: 'SCBA Cylinder', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
+    out[id] = { type: 'Cylinder Station', unit, stdCylId, stdCylLastHydro, stdCylPressure, stdCylComments,
       history: [{ location: stdCylId || id, result: '', timestamp: now }], createdAt: now, updatedAt: now };
   });
   (compact.eyewash || []).forEach(([id, eyewashLocation, eyewashInspection, eyewashLastService, eyewashLastInspected, eyewashComments]) => {
@@ -1027,7 +1030,7 @@ function recordComponentLinksForItem(item, collectionPointId, timestamp) {
     recordComponentLink(item.scbaLMaskId, collectionPointId, 'L Mask', timestamp);
     recordComponentLink(item.scbaMMaskId, collectionPointId, 'M Mask', timestamp);
     recordComponentLink(item.scbaSMaskId, collectionPointId, 'S Mask', timestamp);
-  } else if (item.type === 'SCBA Cylinder') {
+  } else if (isCylType(item.type)) {
     recordComponentLink(item.stdCylId, collectionPointId, 'Cylinder', timestamp);
   } else if (item.type === 'SCBA Frame') {
     recordComponentLink(item.stdFrameId, collectionPointId, 'Frame', timestamp);
@@ -1074,6 +1077,7 @@ function itemDisplayName(item, id) {
   if (item.type === 'Mask Cabinet') return item.maskCabLocation || id;
   if (item.type === 'SAR') return item.sarLocation || id;
   if (item.type === 'SCBA Station') return item.scbaCabinetLocation || id;
+  if (item.type === 'Cylinder Station') return id;
   if (item.type === 'SCBA Cylinder') return item.stdCylId || id;
   if (item.type === 'SCBA Frame') return item.stdFrameId || id;
   if (item.type === 'SCBA Mask') return (item.stdMaskSize ? item.stdMaskSize + ' Mask ' : 'Mask ') + (item.stdMaskId || id);
@@ -1081,7 +1085,7 @@ function itemDisplayName(item, id) {
 }
 // ---------- This month's checklist ----------
 const MONTH_PLAN_KEY = 'safety_tracker_month_plan_v1';
-const PLAN_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'SCBA Cylinder'];
+const PLAN_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'Cylinder Station'];
 function defaultMonthLabel() { return new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
 function loadMonthPlan() {
   try {
@@ -1089,7 +1093,7 @@ function loadMonthPlan() {
     if (p && Array.isArray(p.types)) {
       // One-time: standalone cylinder collection points join the monthly checklist.
       if (!localStorage.getItem('safety_tracker_migr_cyl_plan_v1')) {
-        if (!p.types.includes('SCBA Cylinder')) p.types.push('SCBA Cylinder');
+        if (!p.types.includes('Cylinder Station')) p.types.push('Cylinder Station');
         localStorage.setItem('safety_tracker_migr_cyl_plan_v1', '1');
         localStorage.setItem(MONTH_PLAN_KEY, JSON.stringify(p));
       }
@@ -1106,9 +1110,9 @@ function activePlan() { return (archiveEdit && archiveEdit.plan) ? archiveEdit.p
 function monthMissing(item) {
   const m = [];
   // "Is the pack / cylinder present?": N/A completes it for the month; No means it's absent, so no equipment is required.
-  const pres = item.type === 'SCBA Station' ? item.scbaPackPresent : item.type === 'SCBA Cylinder' ? item.stdCylPresent : '';
+  const pres = item.type === 'SCBA Station' ? item.scbaPackPresent : isCylType(item.type) ? item.stdCylPresent : '';
   if (pres === 'N/A') return m;
-  if (item.type === 'SCBA Cylinder') { if (pres !== 'No' && !item.stdCylId) m.push('Cylinder'); return m; }
+  if (isCylType(item.type)) { if (pres !== 'No' && !item.stdCylId) m.push('Cylinder'); return m; }
   if (!itemInspectionResult(item)) m.push('Inspection');
   if (item.type === 'SCBA Station' && pres === 'No') return m;
   if (item.type === 'SCBA Station') {
@@ -1246,8 +1250,8 @@ function itemSummaryLine(item) {
     if (item.scbaLastInspected) p.push('Inspected ' + item.scbaLastInspected);
     return p.join(' · ');
   }
-  if (item.type === 'SCBA Cylinder') {
-    const p = []; if (item.stdCylLastHydro) p.push('Hydro ' + item.stdCylLastHydro); if (item.stdCylPressure) p.push(item.stdCylPressure + ' psi');
+  if (isCylType(item.type)) {
+    const p = []; if (item.type === 'Cylinder Station') p.push(item.stdCylId ? 'Cyl ' + item.stdCylId : 'No cylinder linked'); if (item.stdCylLastHydro) p.push('Hydro ' + item.stdCylLastHydro); if (item.stdCylPressure) p.push(item.stdCylPressure + ' psi');
     return p.join(' · ');
   }
   if (item.type === 'SCBA Frame') {
@@ -1357,7 +1361,7 @@ function pieceRef(entry) {
   const { item, virtual } = entry;
   if (!virtual) {
     if (item.type === 'SCBA Frame') return { type: 'SCBA Frame', idF: 'stdFrameId', dateF: 'stdFrameLastCalibration', serialF: 'stdFrameSerialNumber', dateLabel: 'Last calibration', obj: item };
-    if (item.type === 'SCBA Cylinder') return { type: 'SCBA Cylinder', idF: 'stdCylId', dateF: 'stdCylLastHydro', serialF: 'stdCylSerialNumber', dateLabel: 'Last hydro', obj: item };
+    if (isCylType(item.type)) return { type: 'SCBA Cylinder', idF: 'stdCylId', dateF: 'stdCylLastHydro', serialF: 'stdCylSerialNumber', dateLabel: 'Last hydro', obj: item };
     if (item.type === 'SCBA Mask') return { type: 'SCBA Mask', idF: 'stdMaskId', dateF: 'stdMaskExpDate', sizeF: 'stdMaskSize', dateLabel: 'Calibration / EXP date', obj: item };
     return null;
   }
@@ -1494,7 +1498,8 @@ function renderList() {
     }
     if (piecesMode) {
       // Equipment-pieces view: only individually tracked pieces (standalone Frame/Cylinder/Mask records)
-      if (!pieceTypes.includes(item.type)) return false;
+      if (item.type === 'Cylinder Station') { if (!item.stdCylId || !pieceTypes.includes('SCBA Cylinder')) return false; }
+      else if (!pieceTypes.includes(item.type)) return false;
     } else if (typeFilterVal && item.type !== typeFilterVal) return false;
     if (unitFilterVal && item.unit !== unitFilterVal) return false;
     if (!query) return true;
@@ -1606,8 +1611,10 @@ function setType(type) {
   document.querySelectorAll('#typeToggle button').forEach(b => {
     b.classList.toggle('active', b.dataset.type === type);
   });
+  const fieldsFor = type === 'Cylinder Station' ? 'SCBA Cylinder' : type;   // Cylinder Station reuses the cylinder form
   ALL_TYPES.forEach(t => {
-    document.getElementById('fields-' + t).classList.toggle('active', t === type);
+    const el = document.getElementById('fields-' + t);
+    if (el) el.classList.toggle('active', t === fieldsFor);
   });
   document.getElementById('unitFieldWrapper').style.display = NO_UNIT_TYPES.includes(type) ? 'none' : '';
 }
@@ -1692,6 +1699,7 @@ const VIEW_FIELDS = {
     ['S Mask RFID','scbaSMaskId'],['S Mask Date','scbaSMaskExpDate'],
     ['Inspection','scbaInspection'],['Last Inspected','scbaLastInspected'],['Comments','scbaComments']],
   'SCBA Cylinder': [['Cylinder present','stdCylPresent'],['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Manufactured Date','stdCylManufacturedDate'],['Comments','stdCylComments']],
+  'Cylinder Station': [['Cylinder present','stdCylPresent'],['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Manufactured Date','stdCylManufacturedDate'],['Comments','stdCylComments']],
   'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Serial Number','stdFrameSerialNumber'],['Comments','stdFrameComments']],
   'SCBA Mask': [['Size','stdMaskSize'],['Mask RFID','stdMaskId'],['EXP Date','stdMaskExpDate'],['Comments','stdMaskComments']]
 };
@@ -2275,7 +2283,7 @@ function buildXlsxSheetsFromItems(itemsObj) {
 
   // ---- Separate sheets for equipment types that weren't part of the original workbook ----
   function addSimpleSheet(name, type, columns, headers) {
-    const rows = allItems.filter(([, i]) => i.type === type).map(([id, i]) => columns.map(c => c === '__id__' ? id : i[c]));
+    const rows = allItems.filter(([, i]) => type === 'SCBA Cylinder' ? isCylType(i.type) : i.type === type).map(([id, i]) => columns.map(c => c === '__id__' ? id : i[c]));
     if (rows.length) sheets.push({ name, rows: [headers, ...rows] });
   }
   addSimpleSheet('Eyewash Stations', 'Eyewash Station', ['eyewashLocation', 'eyewashInspection', 'eyewashLastService', 'eyewashLastInspected', 'eyewashComments'],
@@ -2338,7 +2346,7 @@ const DOWNLOAD_TYPES = [
 
 function buildTypeSheet(key, itemsObj) {
   const all = Object.entries(itemsObj);
-  const ofType = t => all.filter(([, i]) => i.type === t);
+  const ofType = t => all.filter(([, i]) => t === 'SCBA Cylinder' ? isCylType(i.type) : i.type === t);
   const sortRows = rows => rows.sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || ''), undefined, { numeric: true }));
   if (key === 'station') {
     return { name: 'SCBA Stations', rows: [
@@ -2353,7 +2361,7 @@ function buildTypeSheet(key, itemsObj) {
     const rows = [];
     ofType('SCBA Station').forEach(([id, i]) => { if (i.scbaCylinderId) rows.push([i.scbaCylinderId, 'In Station', id, i.scbaCabinetLocation, i.unit,
       i.scbaLastHydro, i.scbaPressure, i.scbaCylinderSerialNumber, i.scbaCylinderManufacturedDate, i.scbaComments]); });
-    ofType('SCBA Cylinder').forEach(([id, i]) => rows.push([i.stdCylId || id, 'Standalone', '', '', i.unit,
+    ofType('SCBA Cylinder').forEach(([id, i]) => rows.push([i.stdCylId || id, i.type === 'Cylinder Station' ? 'Cylinder station ' + id : 'Standalone', '', '', i.unit,
       i.stdCylLastHydro, i.stdCylPressure, i.stdCylSerialNumber, i.stdCylManufacturedDate, i.stdCylComments]));
     return { name: 'SCBA Cylinders', rows: [['Cylinder RFID', 'Status', 'Station barcode', 'Station location', 'Unit', 'Last hydro', 'Pressure', 'Serial Number', 'Manufactured Date', 'Comments'], ...sortRows(rows)] };
   }
@@ -2624,7 +2632,7 @@ function crBuildSheets() {
   if (layout === 'unit') {
     const types = new Set(keys.map(k => CR_TYPE_MAP[k]));
     const narrowed = {};
-    Object.entries(byUnit).forEach(([id, i]) => { if (types.has(i.type)) narrowed[id] = i; });
+    Object.entries(byUnit).forEach(([id, i]) => { if (types.has(i.type) || (types.has('SCBA Cylinder') && i.type === 'Cylinder Station')) narrowed[id] = i; });
     const sheets = buildXlsxSheetsFromItems(narrowed);
     return (sheets.length === 1 && sheets[0].name === 'Sheet1') ? [] : sheets;
   }
@@ -3205,7 +3213,7 @@ const MONTHLY_RESET_FIELDS = {
   'Mask Cabinet': ['maskCabCondition', 'maskCabBox', 'maskCabInspection', 'maskCabLastInspected', 'maskCabComments'],
   'SAR': ['sarInspection', 'sarLastInspected', 'sarComments'],
   'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments', 'scbaPackPresent'],
-  'SCBA Cylinder': ['stdCylPresent']
+  'Cylinder Station': ['stdCylPresent']
 };
 
 // Equipment that gets cleared from collection points at the start of a month, so it can be scanned in again.
@@ -3215,6 +3223,8 @@ function clearEquipmentFields(item) {
      'scbaCylinderId', 'scbaLastHydro', 'scbaPressure', 'scbaCylinderSerialNumber', 'scbaCylinderManufacturedDate',
      'scbaLMaskId', 'scbaLMaskExpDate', 'scbaMMaskId', 'scbaMMaskExpDate', 'scbaSMaskId', 'scbaSMaskExpDate']
       .forEach(f => { if (f in item) item[f] = ''; });
+  } else if (item.type === 'Cylinder Station') {
+    ['stdCylId', 'stdCylLastHydro', 'stdCylPressure', 'stdCylSerialNumber', 'stdCylManufacturedDate'].forEach(f => { if (f in item) item[f] = ''; });
   } else if (item.type === 'Mask Cabinet') {
     item.masks = [];
     item.maskCabSarNumber = '';
@@ -3265,7 +3275,7 @@ document.getElementById('nmStartBtn').addEventListener('click', async () => {
     });
     const updated = { ...item, history, updatedAt: now };
     fields.forEach(f => { updated[f] = ''; });
-    if (clearEquip && ['SCBA Station', 'Mask Cabinet', 'SAR'].includes(item.type)) {
+    if (clearEquip && ['SCBA Station', 'Mask Cabinet', 'SAR', 'Cylinder Station'].includes(item.type)) {
       if (equipmentSnapshot(item).length || (item.type === 'SAR' && item.sarId)) clearedCount++;
       clearEquipmentFields(updated);
     }
@@ -4296,25 +4306,33 @@ if (!window.isSecureContext) {
       localStorage.setItem('safety_tracker_migr_mcr_boards_v2', '1');
     }
   } catch (e) { /* ignore */ }
-  // One-time: the Safety Warehouse cylinder collection points (A03155–A03174, A03205–A03252). Missing ones are created,
-  // and empty placeholder SCBA stations that used these barcodes are converted. Records that hold real data are never touched.
+  // One-time: the Safety Warehouse cylinder collection points (A03155–A03174, A03205–A03252) become "Cylinder Station" records.
+  // Missing ones are created, loose-cylinder records and empty placeholder SCBA stations at these barcodes are converted,
+  // and anything holding real data under another type is left alone.
   try {
-    if (!localStorage.getItem('safety_tracker_migr_cyl_cps_v1')) {
+    if (!localStorage.getItem('safety_tracker_migr_cyl_stations_v2')) {
       const ids = [];
       for (let n = 3155; n <= 3174; n++) ids.push('A0' + n);
       for (let n = 3205; n <= 3252; n++) ids.push('A0' + n);
       const t = Date.now(); let changed = 0;
       ids.forEach((id) => {
         const cur = items[id];
-        if (cur && cur.type === 'SCBA Cylinder') { if (!cur.unit) { cur.unit = 'Safety Warehouse'; changed++; } return; }
+        if (cur && cur.type === 'Cylinder Station') return;
+        if (cur && cur.type === 'SCBA Cylinder') { cur.type = 'Cylinder Station'; if (!cur.unit) cur.unit = 'Safety Warehouse'; cur.updatedAt = t; changed++; return; }
         const emptyStation = cur && cur.type === 'SCBA Station' && !['scbaCabinetLocation', 'scbaFrameId', 'scbaCylinderId', 'scbaLMaskId', 'scbaMMaskId', 'scbaSMaskId', 'scbaInspection', 'scbaComments'].some(f => cur[f]);
-        if (cur && !emptyStation) return;                       // real data under that barcode — leave it alone
-        items[id] = { type: 'SCBA Cylinder', unit: 'Safety Warehouse', stdCylId: '', stdCylLastHydro: '', stdCylPressure: '', stdCylComments: '',
+        if (cur && !emptyStation) return;
+        items[id] = { type: 'Cylinder Station', unit: 'Safety Warehouse', stdCylId: '', stdCylLastHydro: '', stdCylPressure: '', stdCylComments: '',
           history: [], createdAt: t, updatedAt: t };
         changed++;
       });
       if (changed) saveItems();
-      localStorage.setItem('safety_tracker_migr_cyl_cps_v1', '1');
+      // The monthly checklist tracks Cylinder Stations (not loose cylinders).
+      if (Array.isArray(monthPlan.types)) {
+        monthPlan.types = monthPlan.types.filter(x => x !== 'SCBA Cylinder');
+        if (!monthPlan.types.includes('Cylinder Station')) monthPlan.types.push('Cylinder Station');
+        saveMonthPlan();
+      }
+      localStorage.setItem('safety_tracker_migr_cyl_stations_v2', '1');
     }
   } catch (e) { /* ignore */ }
   populateFilters();
