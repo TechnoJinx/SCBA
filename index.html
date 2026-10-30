@@ -3627,7 +3627,7 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
   if (!confirm(
     'Import ' + file.name + '?\n\n' +
     '• ' + plan.fill.length + ' mask boxes / SAR boards will get their masks (' + maskCount + ' masks), expiry dates, SAR number, Mask Box result and notes\n' +
-    '• ' + plan.hasMasks.length + ' already have masks in the app — their masks are left alone (only empty SAR number, Mask Box result and notes are filled)\n' +
+    '• ' + plan.hasMasks.length + ' already have masks in the app — their masks are kept; only empty expiry dates, SAR number, Mask Box result and notes are filled\n' +
     '• ' + plan.notFound.length + ' are not in the app' + (plan.notFound.length ? ' (' + plan.notFound.slice(0, 6).join(', ') + (plan.notFound.length > 6 ? '…' : '') + ')' : '') + '\n' +
     '• ' + splan.fill.length + ' SCBA stations (packs tabs): empty Frame, Calibration date, Cylinder, Hydro date, Pressure, masks and notes get filled; existing entries are never overwritten' + (splan.notFound.length ? ' (' + splan.notFound.length + ' not in the app: ' + splan.notFound.slice(0, 6).map(x => x.id).join(', ') + (splan.notFound.length > 6 ? '…' : '') + ')' : '') + '\n' +
     (res.skipped.length ? '• Tabs skipped (different layout): ' + res.skipped.join(', ') + '\n' : '') +
@@ -3650,6 +3650,12 @@ document.getElementById('routeFileInput').addEventListener('change', async (e) =
       if (masks.length) { it.masks = masks; changed = true; }
     }
     if (/^notes$/i.test(String(it.maskCabSarNumber || '').trim())) it.maskCabSarNumber = '';   // the sheet's "Notes" label was once imported as a SAR number
+    // Masks already in the app: fill any empty expiry date (from the sheet for the same mask ID, else the calibration list).
+    const sheetDates = {};
+    c.rows.forEach(r => { [[r.l, r.lDate], [r.m, r.mDate], [r.s, r.sDate]].forEach(([id, d]) => { if (id && d) sheetDates[id] = d; }); });
+    (it.masks || []).forEach(mk => {
+      if (mk && mk.id && !mk.expDate) { const d = sheetDates[mk.id] || getKnownDateForComponent(mk.id); if (d) { mk.expDate = d; changed = true; } }
+    });
     if (c.sar && !it.maskCabSarNumber) { it.maskCabSarNumber = c.sar; changed = true; }
     if (c.box && !it.maskCabBox) { it.maskCabBox = c.box; changed = true; }
     if (c.notes.length && !it.maskCabComments) { it.maskCabComments = c.notes.join('; '); changed = true; }
