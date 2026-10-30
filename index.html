@@ -431,6 +431,10 @@
 
     <!-- SCBA Station (combined) fields -->
     <div class="type-fields" id="fields-SCBA Station">
+      <label>Is the pack present? <span style="opacity:.7;">(N/A completes this month)</span></label>
+      <select id="scbaPackPresentInput">
+        <option value="">— Not answered —</option><option value="Yes">Yes</option><option value="No">No</option><option value="N/A">N/A</option>
+      </select>
       <label>Cabinet Location</label>
       <input type="text" id="scbaCabinetLocationInput" placeholder="e.g. Reformer Shelter Inside #1">
       <label>Cabinet Condition</label>
@@ -526,6 +530,10 @@
 
     <!-- SCBA Cylinder (standalone — spare/loose cylinder, no frame or masks attached) -->
     <div class="type-fields" id="fields-SCBA Cylinder">
+      <label>Is the cylinder present? <span style="opacity:.7;">(N/A completes this month)</span></label>
+      <select id="stdCylPresentInput">
+        <option value="">— Not answered —</option><option value="Yes">Yes</option><option value="No">No</option><option value="N/A">N/A</option>
+      </select>
       <label>Cylinder RFID Tag</label>
       <div class="input-with-scan">
         <input type="text" id="stdCylIdInput" placeholder="Tap 📡 to scan the cylinder's tag">
@@ -1073,12 +1081,20 @@ function itemDisplayName(item, id) {
 }
 // ---------- This month's checklist ----------
 const MONTH_PLAN_KEY = 'safety_tracker_month_plan_v1';
-const PLAN_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station'];
+const PLAN_TYPES = ['Extinguisher', 'Emergency Light', 'Eyewash Station', 'Spill Kit', 'Mask Cabinet', 'SAR', 'SCBA Station', 'SCBA Cylinder'];
 function defaultMonthLabel() { return new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
 function loadMonthPlan() {
   try {
     const p = JSON.parse(localStorage.getItem(MONTH_PLAN_KEY) || 'null');
-    if (p && Array.isArray(p.types)) return p;
+    if (p && Array.isArray(p.types)) {
+      // One-time: standalone cylinder collection points join the monthly checklist.
+      if (!localStorage.getItem('safety_tracker_migr_cyl_plan_v1')) {
+        if (!p.types.includes('SCBA Cylinder')) p.types.push('SCBA Cylinder');
+        localStorage.setItem('safety_tracker_migr_cyl_plan_v1', '1');
+        localStorage.setItem(MONTH_PLAN_KEY, JSON.stringify(p));
+      }
+      return p;
+    }
   } catch (e) { /* ignore */ }
   return { label: defaultMonthLabel(), startedAt: null, types: PLAN_TYPES.slice() };
 }
@@ -1089,7 +1105,12 @@ function activePlan() { return (archiveEdit && archiveEdit.plan) ? archiveEdit.p
 // What's still missing on a record for this month. Empty list = done.
 function monthMissing(item) {
   const m = [];
+  // "Is the pack / cylinder present?": N/A completes it for the month; No means it's absent, so no equipment is required.
+  const pres = item.type === 'SCBA Station' ? item.scbaPackPresent : item.type === 'SCBA Cylinder' ? item.stdCylPresent : '';
+  if (pres === 'N/A') return m;
+  if (item.type === 'SCBA Cylinder') { if (pres !== 'No' && !item.stdCylId) m.push('Cylinder'); return m; }
   if (!itemInspectionResult(item)) m.push('Inspection');
+  if (item.type === 'SCBA Station' && pres === 'No') return m;
   if (item.type === 'SCBA Station') {
     if (!item.scbaFrameId) m.push('Frame');
     if (!item.scbaCylinderId) m.push('Cylinder');
@@ -1663,14 +1684,14 @@ const VIEW_FIELDS = {
     ['SAR Number','maskCabSarNumber'],['Mask Box','maskCabBox'],
     ['Inspection','maskCabInspection'],['Last Inspected','maskCabLastInspected'],['Comments','maskCabComments']],
   'SAR': [['Location','sarLocation'],['RFID/Barcode','sarId'],['Inspection','sarInspection'],['Last Inspected','sarLastInspected'],['Comments','sarComments']],
-  'SCBA Station': [['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
+  'SCBA Station': [['Pack present','scbaPackPresent'],['Cabinet Location','scbaCabinetLocation'],['Cabinet Condition','scbaCabinetCondition'],
     ['Frame RFID','scbaFrameId'],['Last Calibration','scbaLastCalibration'],['Frame Serial Number','scbaFrameSerialNumber'],
     ['Cylinder RFID','scbaCylinderId'],['Last Hydro','scbaLastHydro'],['Pressure (psi)','scbaPressure'],['Cylinder Serial Number','scbaCylinderSerialNumber'],['Cylinder Manufactured Date','scbaCylinderManufacturedDate'],
     ['L Mask RFID','scbaLMaskId'],['L Mask Date','scbaLMaskExpDate'],
     ['M Mask RFID','scbaMMaskId'],['M Mask Date','scbaMMaskExpDate'],
     ['S Mask RFID','scbaSMaskId'],['S Mask Date','scbaSMaskExpDate'],
     ['Inspection','scbaInspection'],['Last Inspected','scbaLastInspected'],['Comments','scbaComments']],
-  'SCBA Cylinder': [['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Manufactured Date','stdCylManufacturedDate'],['Comments','stdCylComments']],
+  'SCBA Cylinder': [['Cylinder present','stdCylPresent'],['Cylinder RFID','stdCylId'],['Last Hydro','stdCylLastHydro'],['Pressure (psi)','stdCylPressure'],['Serial Number','stdCylSerialNumber'],['Manufactured Date','stdCylManufacturedDate'],['Comments','stdCylComments']],
   'SCBA Frame': [['Frame RFID','stdFrameId'],['Last Calibration','stdFrameLastCalibration'],['Serial Number','stdFrameSerialNumber'],['Comments','stdFrameComments']],
   'SCBA Mask': [['Size','stdMaskSize'],['Mask RFID','stdMaskId'],['EXP Date','stdMaskExpDate'],['Comments','stdMaskComments']]
 };
@@ -1892,6 +1913,7 @@ function openModal(id) {
   document.getElementById('sarLastInspectedInput').value = existing?.sarLastInspected || '';
   document.getElementById('sarCommentsInput').value = existing?.sarComments || '';
 
+  document.getElementById('scbaPackPresentInput').value = existing?.scbaPackPresent || '';
   document.getElementById('scbaCabinetLocationInput').value = existing?.scbaCabinetLocation || '';
   document.getElementById('scbaCabinetConditionInput').value = existing?.scbaCabinetCondition || '';
   document.getElementById('scbaFrameIdInput').value = existing?.scbaFrameId || '';
@@ -1913,6 +1935,7 @@ function openModal(id) {
   document.getElementById('scbaLastInspectedInput').value = existing?.scbaLastInspected || '';
   document.getElementById('scbaCommentsInput').value = existing?.scbaComments || '';
 
+  document.getElementById('stdCylPresentInput').value = existing?.stdCylPresent || '';
   document.getElementById('stdCylIdInput').value = existing?.stdCylId || '';
   document.getElementById('stdCylLastHydroInput').value = existing?.stdCylLastHydro || (!existing ? getKnownDateForComponent(id) : null) || '';
   document.getElementById('stdCylPressureInput').value = existing?.stdCylPressure || '';
@@ -1992,6 +2015,7 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     sarLastInspected: document.getElementById('sarLastInspectedInput').value,
     sarComments: document.getElementById('sarCommentsInput').value.trim(),
 
+    scbaPackPresent: document.getElementById('scbaPackPresentInput').value,
     scbaCabinetLocation: document.getElementById('scbaCabinetLocationInput').value.trim(),
     scbaCabinetCondition: document.getElementById('scbaCabinetConditionInput').value,
     scbaFrameId: document.getElementById('scbaFrameIdInput').value.trim(),
@@ -2013,6 +2037,7 @@ document.getElementById('saveItemBtn').addEventListener('click', () => {
     scbaLastInspected: document.getElementById('scbaLastInspectedInput').value,
     scbaComments: document.getElementById('scbaCommentsInput').value.trim(),
 
+    stdCylPresent: document.getElementById('stdCylPresentInput').value,
     stdCylId: document.getElementById('stdCylIdInput').value.trim(),
     stdCylLastHydro: document.getElementById('stdCylLastHydroInput').value,
     stdCylPressure: document.getElementById('stdCylPressureInput').value,
@@ -3179,7 +3204,8 @@ const MONTHLY_RESET_FIELDS = {
   'Spill Kit': ['spillSeal', 'spillMissingItems', 'spillBoxCondition', 'spillLastInspected', 'spillComments'],
   'Mask Cabinet': ['maskCabCondition', 'maskCabBox', 'maskCabInspection', 'maskCabLastInspected', 'maskCabComments'],
   'SAR': ['sarInspection', 'sarLastInspected', 'sarComments'],
-  'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments']
+  'SCBA Station': ['scbaCabinetCondition', 'scbaInspection', 'scbaLastInspected', 'scbaComments', 'scbaPackPresent'],
+  'SCBA Cylinder': ['stdCylPresent']
 };
 
 // Equipment that gets cleared from collection points at the start of a month, so it can be scanned in again.
