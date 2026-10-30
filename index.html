@@ -1067,7 +1067,7 @@ function monthMissing(item) {
   if (item.type === 'SCBA Station') {
     if (!item.scbaFrameId) m.push('Frame');
     if (!item.scbaCylinderId) m.push('Cylinder');
-    if (!item.scbaNoMasks && !(item.scbaLMaskId || item.scbaMMaskId || item.scbaSMaskId)) m.push('Mask');
+    if (!item.scbaNoMasks && !(item.unit === 'Main Control Room' && /board/i.test(item.scbaCabinetLocation || '') && !(item.scbaLMaskId || item.scbaMMaskId || item.scbaSMaskId)) && !(item.scbaLMaskId || item.scbaMMaskId || item.scbaSMaskId)) m.push('Mask');
   } else if (item.type === 'Mask Cabinet') {
     if (!(item.masks || []).some(x => x.id)) m.push('Masks');
   } else if (item.type === 'SAR') {
