@@ -4296,6 +4296,27 @@ if (!window.isSecureContext) {
       localStorage.setItem('safety_tracker_migr_mcr_boards_v2', '1');
     }
   } catch (e) { /* ignore */ }
+  // One-time: the Safety Warehouse cylinder collection points (A03155–A03174, A03205–A03252). Missing ones are created,
+  // and empty placeholder SCBA stations that used these barcodes are converted. Records that hold real data are never touched.
+  try {
+    if (!localStorage.getItem('safety_tracker_migr_cyl_cps_v1')) {
+      const ids = [];
+      for (let n = 3155; n <= 3174; n++) ids.push('A0' + n);
+      for (let n = 3205; n <= 3252; n++) ids.push('A0' + n);
+      const t = Date.now(); let changed = 0;
+      ids.forEach((id) => {
+        const cur = items[id];
+        if (cur && cur.type === 'SCBA Cylinder') { if (!cur.unit) { cur.unit = 'Safety Warehouse'; changed++; } return; }
+        const emptyStation = cur && cur.type === 'SCBA Station' && !['scbaCabinetLocation', 'scbaFrameId', 'scbaCylinderId', 'scbaLMaskId', 'scbaMMaskId', 'scbaSMaskId', 'scbaInspection', 'scbaComments'].some(f => cur[f]);
+        if (cur && !emptyStation) return;                       // real data under that barcode — leave it alone
+        items[id] = { type: 'SCBA Cylinder', unit: 'Safety Warehouse', stdCylId: '', stdCylLastHydro: '', stdCylPressure: '', stdCylComments: '',
+          history: [], createdAt: t, updatedAt: t };
+        changed++;
+      });
+      if (changed) saveItems();
+      localStorage.setItem('safety_tracker_migr_cyl_cps_v1', '1');
+    }
+  } catch (e) { /* ignore */ }
   populateFilters();
   renderList();
   cloudAutoStart();
